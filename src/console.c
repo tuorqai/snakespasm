@@ -64,6 +64,8 @@ qboolean	con_debuglog = false;
 
 qboolean	con_initialized;
 
+int		con_mode; 	// ~tuorqai~
+sizebuf_t	con_rawbuf; 	// ~tuorqai~
 
 /*
 ================
@@ -105,7 +107,7 @@ extern int history_line; //johnfitz
 
 void Con_ToggleConsole_f (void)
 {
-	if (key_dest == key_console/* || (key_dest == key_game && con_forcedup)*/)
+	if (key_dest == key_console && con_mode == con_mode_default /* || (key_dest == key_game && con_forcedup)*/)
 	{
 		key_lines[edit_line][1] = 0;	// clear any typing
 		key_linepos = 1;
@@ -1067,6 +1069,113 @@ void Con_TabComplete (void)
 }
 
 /*
+================
+Con_EnterRawMode -- tuorqai
+================
+*/
+void Con_EnterRawMode (void)
+{
+	if (con_mode == con_mode_raw)
+		return;
+
+	Con_Printf("\x02Welcome to Python REPL mode! Press Ctrl-D to exit.\n");
+	SZ_Clear(&con_rawbuf);
+
+	key_lines[edit_line][0] = 0x8d;
+	key_lines[edit_line][1] = 0;
+	key_linepos = 1;
+	
+	con_mode = con_mode_raw;
+}
+
+/*
+================
+Con_ExitRawMode -- tuorqai
+================
+*/
+void Con_ExitRawMode (void)
+{
+	if (con_mode != con_mode_raw)
+		return;
+
+	Con_Printf ("%cExiting from Python REPL.\n", 2);
+
+	key_lines[edit_line][0] = ']';
+	key_lines[edit_line][1] = 0;
+	key_linepos = 1;
+
+	con_mode = con_mode_default;
+}
+
+/*
+================
+Con_RawBufAddText -- tuorqai
+================
+*/
+void Con_RawBufAddText (const char *text)
+{
+	int l = Q_strlen (text);
+
+	if (con_rawbuf.maxsize == 0) {
+		SZ_Alloc(&con_rawbuf, 1 << 18);
+	}
+
+	if (con_rawbuf.cursize + l >= con_rawbuf.maxsize)
+	{
+		Con_Printf ("Con_RawBufAddText: overflow\n");
+		return;
+	}
+
+	SZ_Write (&con_rawbuf, text, Q_strlen (text));
+}
+
+/*
+====================
+Con_RawTab -- tuorqai
+====================
+*/
+void Con_RawTab (int length)
+{
+	int i;
+	int next_key_linepos = 1 + length * (((key_linepos - 1) / length) + 1);
+
+	if (next_key_linepos >= MAXCMDLINE) {
+		return;
+	}
+
+	for (i = key_linepos; i < next_key_linepos; i++) {
+		key_lines[edit_line][i] = ' ';
+	}
+
+	key_linepos = next_key_linepos;
+	key_lines[edit_line][key_linepos] = 0;
+}
+
+/*
+====================
+Con_RawRepl -- tuorqai
+====================
+*/
+int Con_RawRepl (char const *line)
+{
+	int pyrun_status;
+
+	Con_RawBufAddText(line);
+
+	con_rawbuf.data[con_rawbuf.cursize] = 0;
+	pyrun_status = PyQ_RunBuffer((const char *) con_rawbuf.data);
+
+	if (pyrun_status == 1)
+		// incomplete input, add newline and wait for next line
+		Con_RawBufAddText("\n");
+	else
+		// the code is complete or erroneous -- flush it
+		SZ_Clear(&con_rawbuf);
+	
+	return pyrun_status;
+}
+
+/*
 ==============================================================================
 
 DRAWING
@@ -1235,7 +1344,7 @@ void Con_DrawConsole (int lines, qboolean drawinput)
 
 //draw version number in bottom right
 	y += 8;
-	q_snprintf (ver, sizeof(ver), "QuakeSpasm " QUAKESPASM_VER_STRING);
+	q_snprintf (ver, sizeof(ver), "SnakeSpasm " QUAKESPASM_VER_STRING); // tuorqai
 	for (x = 0; x < (int)strlen(ver); x++)
 		Draw_Character ((con_linewidth - strlen(ver) + x + 2)<<3, y, ver[x] /*+ 128*/);
 }

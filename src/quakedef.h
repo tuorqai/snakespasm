@@ -222,6 +222,8 @@ typedef struct
 #include "progs.h"
 #include "server.h"
 
+#include "pyquake.h"
+
 #include "platform.h"
 #if defined(SDL_FRAMEWORK) || defined(NO_SDL_CONFIG)
 #if defined(USE_SDL2)

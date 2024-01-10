@@ -89,7 +89,9 @@ add_executable(${PROJECT_NAME}
     src/sv_user.c
     src/world.c
     src/zone.c
-    src/main_sdl.c)
+    src/main_sdl.c
+    src/pyquake.c
+    src/pyq_builtins.c)
 
 if(WIN32)
     target_sources(${PROJECT_NAME} PRIVATE
@@ -114,6 +116,9 @@ find_library(LIBM m)
 if(LIBM)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBM})
 endif()
+
+find_package(Python3 REQUIRED COMPONENTS Development)
+target_link_libraries(${PROJECT_NAME} PRIVATE Python3::Python)
 
 if(DO_USERDIRS)
     target_compile_definitions(${PROJECT_NAME} PRIVATE DO_USERDIRS)

@@ -878,6 +878,7 @@ void Host_Init (void)
 	}
 
 	LOC_Init (); // for 2021 rerelease support.
+	PyQ_Init (); // tuorqai
 
 	Hunk_AllocName (0, "-HOST_HUNKLEVEL-");
 	host_hunklevel = Hunk_LowMark ();
@@ -927,6 +928,8 @@ void Host_Shutdown(void)
 	scr_disabled_for_loading = true;
 
 	Host_WriteConfiguration ();
+
+	PyQ_Shutdown (); // tuorqai
 
 	NET_Shutdown ();
 

@@ -244,15 +244,23 @@ void Key_Console (int key)
 	int	history_line_last;
 	size_t		len;
 	char *workline = key_lines[edit_line];
+	int repl_status;
 
 	switch (key)
 	{
 	case K_ENTER:
 	case K_KP_ENTER:
 		key_tabpartial[0] = 0;
-		Cbuf_AddText (workline + 1);	// skip the prompt
-		Cbuf_AddText ("\n");
 		Con_Printf ("%s\n", workline);
+		if (con_mode == con_mode_raw)
+		{
+			repl_status = Con_RawRepl (workline + 1);
+		}
+		else
+		{
+			Cbuf_AddText (workline + 1);	// skip the prompt
+			Cbuf_AddText ("\n");
+		}
 
 		// If the last two lines are identical, skip storing this line in history 
 		// by not incrementing edit_line
@@ -260,7 +268,13 @@ void Key_Console (int key)
 			edit_line = (edit_line + 1) & (CMDLINES - 1);
 
 		history_line = edit_line;
-		key_lines[edit_line][0] = ']';
+		if (con_mode == con_mode_raw)
+			if (repl_status == 1)
+				key_lines[edit_line][0] = 0x8e;
+			else
+				key_lines[edit_line][0] = 0x8d;
+		else
+			key_lines[edit_line][0] = ']';
 		key_lines[edit_line][1] = 0; //johnfitz -- otherwise old history items show up in the new edit line
 		key_linepos = 1;
 		if (cls.state == ca_disconnected)
@@ -268,7 +282,10 @@ void Key_Console (int key)
 		return;
 
 	case K_TAB:
-		Con_TabComplete ();
+		if (con_mode == con_mode_raw)
+			Con_RawTab (4);
+		else
+			Con_TabComplete ();
 		return;
 
 	case K_BACKSPACE:
@@ -447,6 +464,12 @@ void Key_Console (int key)
 			return;
 		}
 		break;
+	
+	case 'd':
+	case 'D':
+		if (keydown[K_CTRL]) { /* Ctrl+D: exit from REPL */
+			Con_ExitRawMode ();
+		}
 	}
 }
 

@@ -65,5 +65,16 @@ void LOG_Init (quakeparms_t *parms);
 void LOG_Close (void);
 void Con_DebugLog (const char *msg);
 
+//
+// ~tuorqai~
+enum { con_mode_default, con_mode_raw };
+extern int con_mode;
+extern sizebuf_t con_rawbuf;
+void Con_EnterRawMode (void);
+void Con_ExitRawMode (void);
+void Con_RawBufAddText(const char *text);
+void Con_RawTab (int length);
+int Con_RawRepl (char const *line);
+
 #endif	/* __CONSOLE_H */
 
