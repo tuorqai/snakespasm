@@ -636,7 +636,8 @@ void Host_ServerFrame (void)
 	pr_global_struct->frametime = host_frametime;
 
 // set the time and clear the general datagram
-	SV_ClearDatagram ();
+// tuorqai: moved to _Host_Frame ()
+	// SV_ClearDatagram ();
 
 // check for new clients
 	SV_CheckForNewClients ();
@@ -700,6 +701,11 @@ void _Host_Frame (float time)
 
 // allow mice or other external controllers to add commands
 	IN_Commands ();
+
+// tuorqai: clear datagram before console input is processed
+// so that host can start particle/sound/etc from console
+// (moved here from Host_ServerFrame())
+	SV_ClearDatagram();
 
 // process console commands
 	Cbuf_Execute ();

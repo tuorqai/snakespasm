@@ -21,14 +21,42 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 //------------------------------------------------------------------------------
 
-int PyQ_servernumber;
+enum
+{
+    PyQ_callback_entity_spawn,
+    PyQ_callback_entity_touch,
+    PyQ_callback_entity_think,
+    PyQ_callback_entity_blocked,
+    PyQ_callback_start_frame,
+    PyQ_callback_player_pre_think,
+    PyQ_callback_player_post_think,
+    PyQ_callback_client_kill,
+    PyQ_callback_client_connect,
+    PyQ_callback_put_client_in_server,
+    PyQ_callback_set_new_parms,
+    PyQ_callback_set_change_parms,
+    PyQ_total_callbacks,
+};
+
+struct PyQ_callback
+{
+    char const *name;
+    char const *aftername;
+    PyObject *function;
+    PyObject *afterfunction;
+};
+
+//------------------------------------------------------------------------------
+
+int                 PyQ_servernumber;
+PyQ_StringStorage  *PyQ_string_storage;
+int                 PyQ_string_storage_size;
 
 static PyObject    *PyQ_main;
+static PyObject    *PyQ_progs;
 static PyObject    *PyQ_globals;
 static PyObject    *PyQ_locals;
-static char         PyQ_scriptdir[4096];
 static PyObject    *PyQ_quakeutil_module;
-static PyObject    *PyQ_start_module;
 static PyObject    *PyQ_QuakeConsoleOut_type;
 static PyObject    *PyQ_QuakeConsoleErr_type;
 static PyObject    *PyQ_compile_func;
@@ -38,18 +66,33 @@ static qboolean     PyQ_console_output_set;
 // quakeutil.py
 
 static char const *PyQ_quakeutil_source =
-    "import io, codeop, quake\n"
+    "import io, codeop, quakecl\n"
     "\n"
     "class QuakeConsoleOut(io.TextIOBase):\n"
     "    def write(self, str):\n"
-    "        quake.console_print(str)\n"
+    "        quakecl.console_print(str)\n"
     "\n"
     "class QuakeConsoleErr(io.TextIOBase):\n"
     "    def write(self, str):\n"
-    "        quake.console_error(str)\n"
+    "        quakecl.console_error(str)\n"
     "\n"
     "def compile(source, filename='<input>', symbol='single'):\n"
     "    return codeop.compile_command(source, filename, symbol)\n";
+
+static struct PyQ_callback PyQ_callbacks[] = {
+    { "entityspawn",        "afterentityspawn",         NULL, NULL },
+    { "entitytouch",        "afterentitytouch",         NULL, NULL },
+    { "entitythink",        "afterentitythink",         NULL, NULL },
+    { "entityblocked",      "afterentityblocked",       NULL, NULL },
+    { "startframe",         "afterstartframe",          NULL, NULL },
+    { "playerprethink",     "afterplayerprethink",      NULL, NULL },
+    { "playerpostthink",    "afterplayerpostthink",     NULL, NULL },
+    { "clientkill",         "afterclientkill",          NULL, NULL },
+    { "clientconnect",      "afterclientconnect",       NULL, NULL },
+    { "putclientinserver",  "afterputclientinserver",   NULL, NULL },
+    { "setnewparms",        "aftersetnewparms",         NULL, NULL },
+    { "setchangeparms",     "aftersetchangeparms",      NULL, NULL },
+};
 
 //------------------------------------------------------------------------------
 
@@ -234,55 +277,37 @@ static void PyQ_Py_f(void)
     }
 }
 
-
 /**
- * Import single script or reload it if it already loaded.
+ * Get pyprogs callbacks from dictionary.
  */
-static void PyQ_LoadSingleScript(PyObject *unicode)
+static void PyQ_GetCallbacks(PyObject *dict)
 {
-    PyObject *dict = PyImport_GetModuleDict();
+    int callback;
 
-    if (dict) {
-        PyObject *module = PyDict_GetItem(dict, unicode);
+    for (callback = 0; callback < PyQ_total_callbacks; callback++) {
+        struct PyQ_callback *c = &PyQ_callbacks[callback];
 
-        if (module) {
-            module = PyImport_ReloadModule(module);
-        } else {
-            module = PyImport_Import(unicode);
-        }
+        c->function = PyDict_GetItemString(dict, c->name);
+        c->afterfunction = PyDict_GetItemString(dict, c->aftername);
     }
-
-    PyQ_CheckError();
 }
 
 /**
- * Imports starts.py and loads scripts.
+ * Imports 'pyprogs' module/package.
  */
-static void PyQ_ReloadScripts(void)
+static void PyQ_LoadProgs(void)
 {
-    PyObject *module = PyQ_start_module ? PyQ_start_module : PyQ_ImportModule("start");
+    PyQ_progs = PyQ_ImportModule("pyprogs");
 
-    if (module) {
-        PyObject *list = PyObject_GetAttrString(module, "scripts");
+    if (PyQ_progs) {
+        PyObject *dict = PyObject_GetAttrString(PyQ_progs, "callbacks");
 
-        if (list && PyList_Check(list)) {
-            int i;
-    
-            for (i = 0; i < PyList_Size(list); i++) {
-                PyObject *unicode = PyList_GET_ITEM(list, i);
-
-                if (unicode && PyUnicode_Check(unicode)) {
-                    PyQ_LoadSingleScript(unicode);
-                }
-
-                Py_XDECREF(unicode);
-            }
+        if (dict && PyDict_Check(dict)) {
+            PyQ_GetCallbacks(dict);
         }
 
-        Py_XDECREF(list);
+        Py_XDECREF(dict);
     }
-
-    PyQ_start_module = module;
 
     PyQ_CheckError();
 }
@@ -298,8 +323,6 @@ static void PyQ_PyClear_f(void)
 
     PyQ_globals = Py_BuildValue("{}");
     PyQ_locals = PyQ_globals;
-
-    PyQ_ReloadScripts();
 }
 
 /**
@@ -407,7 +430,8 @@ void PyQ_Init(void)
     PyConfig_InitIsolatedConfig(&config);
     PyConfig_SetBytesString(&config, &config.program_name, host_parms->argv[0]);
 
-    PyImport_AppendInittab("quake", &PyQ_InitBuiltins);
+    PyImport_AppendInittab("quake", &PyQ_quake_init);
+    PyImport_AppendInittab("quakecl", &PyQ_quakecl_init);
 
     status = Py_InitializeFromConfig(&config);
 
@@ -422,9 +446,6 @@ void PyQ_Init(void)
 
     PyQ_InsertModulePath(com_basedir);
     PyQ_InsertModulePath(com_gamedir);
-
-    q_snprintf(PyQ_scriptdir, sizeof(PyQ_scriptdir), "%s/scripts", com_gamedir);
-    PyQ_InsertModulePath(PyQ_scriptdir);
 
     PyQ_main = PyImport_AddModule("__main__");
 
@@ -441,7 +462,7 @@ void PyQ_Init(void)
         Con_Printf("PyQ_InitQuakeUtil() failed");
     }
 
-    PyQ_ReloadScripts();
+    PyQ_LoadProgs();
 
     Cmd_AddCommand("py", PyQ_Py_f);
     Cmd_AddCommand("py_clear", PyQ_PyClear_f);
@@ -457,10 +478,354 @@ void PyQ_Shutdown(void)
     Py_FinalizeEx();
 }
 
-/**
- * Called when server starts.
- */
-void PyQ_LoadScripts(void)
+//------------------------------------------------------------------------------
+// QuakeC-style callbacks
+
+static PyObject *GetCallbackObject(int callback, qboolean after)
 {
-    PyQ_servernumber++;
+    PyObject *function;
+
+    if (after) {
+        function = PyDict_GetItemString(PyQ_globals, PyQ_callbacks[callback].aftername);
+        
+        if (!function) {
+            function = PyQ_callbacks[callback].afterfunction;
+        }
+    } else {
+        function = PyDict_GetItemString(PyQ_globals, PyQ_callbacks[callback].name);
+        
+        if (!function) {
+            function = PyQ_callbacks[callback].function;
+        }
+    }
+
+    return function;
+}
+
+static qboolean CallSimpleCallback(int callback, qboolean after)
+{
+    qboolean override = false;
+    PyObject *function, *result;
+
+    function = GetCallbackObject(callback, after);
+
+    if (!function) {
+        return false;
+    }
+
+    result = PyObject_CallNoArgs(function);
+
+    if (result && Py_IsTrue(result)) {
+        override = true;
+    }
+
+    Py_XDECREF(result);
+    PyQ_CheckError();
+    return override;
+}
+
+static qboolean CallEntityCallback(int callback, edict_t *edict, qboolean after)
+{
+    PyObject *function, *result;
+    PyQ_Entity *entity;
+
+    qboolean override = false;
+
+    function = GetCallbackObject(callback, after);
+
+    if (!function) {
+        return false;
+    }
+
+    entity = (PyQ_Entity *) PyObject_CallNoArgs((PyObject *) &PyQ_Entity_type);
+
+    if (entity) {
+        entity->index = NUM_FOR_EDICT(edict);
+        result = PyObject_CallOneArg(function, (PyObject *) entity);
+
+        if (result && Py_IsTrue(result)) {
+            override = true;
+        }
+
+        Py_XDECREF(result);
+        Py_DECREF((PyObject *) entity);
+    }
+
+    PyQ_CheckError();
+    return override;
+}
+
+static qboolean CallTwoEntityCallback(int callback, edict_t *edict1, edict_t *edict2, qboolean after)
+{
+    PyObject *function, *args, *result;
+    PyQ_Entity *entity1, *entity2;
+
+    qboolean override = false;
+
+    function = GetCallbackObject(callback, after);
+
+    if (!function) {
+        return false;
+    }
+
+    entity1 = (PyQ_Entity *) PyObject_CallNoArgs((PyObject *) &PyQ_Entity_type);
+    entity2 = (PyQ_Entity *) PyObject_CallNoArgs((PyObject *) &PyQ_Entity_type);
+
+    if (entity1 && entity2) {
+        entity1->index = NUM_FOR_EDICT(edict1);
+        entity2->index = NUM_FOR_EDICT(edict2);
+
+        args = Py_BuildValue("(OO)", entity1, entity2);
+
+        if (args) {
+            result = PyObject_Call(function, args, NULL);
+
+            if (result && Py_IsTrue(result)) {
+                override = true;
+            }
+
+            Py_XDECREF(result);
+            Py_DECREF(args);
+        }
+    }
+
+    Py_XDECREF((PyObject *) entity1);
+    Py_XDECREF((PyObject *) entity2);
+
+    PyQ_CheckError();
+    return override;
+}
+
+/**
+ * Called when entity is about to be spawned.
+ */
+static qboolean PyQ_EntitySpawn(edict_t *edict, qboolean after)
+{
+    // worldspawn is about to be spawned, means new server started
+    if (!after && edict == sv.edicts) {
+        PyQ_servernumber++;
+
+        if (PyQ_string_storage_size < sv.max_edicts) {
+            free(PyQ_string_storage);
+
+            PyQ_string_storage = malloc(sizeof(*PyQ_string_storage) * sv.max_edicts);
+            PyQ_string_storage_size = sv.max_edicts;
+        }
+    }
+
+    return CallEntityCallback(PyQ_callback_entity_spawn, edict, after);
+}
+
+/**
+ * entity.touch()
+ */
+static qboolean PyQ_EntityTouch(edict_t *edict1, edict_t *edict2, qboolean after)
+{
+    return CallTwoEntityCallback(PyQ_callback_entity_touch, edict1, edict2, after);
+}
+
+/**
+ * entity.think()
+ */
+static qboolean PyQ_EntityThink(edict_t *edict, qboolean after)
+{
+    return CallEntityCallback(PyQ_callback_entity_think, edict, after);
+}
+
+/**
+ * entity.blocked()
+ */
+static qboolean PyQ_EntityBlocked(edict_t *edict1, edict_t *edict2, qboolean after)
+{
+    return CallTwoEntityCallback(PyQ_callback_entity_blocked, edict1, edict2, after);
+}
+
+/**
+ * StartFrame()
+ */
+static qboolean PyQ_StartFrame(qboolean after)
+{
+    return CallSimpleCallback(PyQ_callback_start_frame, after);
+}
+
+/**
+ * PlayerPreThink()
+ */
+static qboolean PyQ_PlayerPreThink(edict_t *edict, qboolean after)
+{
+    return CallEntityCallback(PyQ_callback_player_pre_think, edict, after);
+}
+
+/**
+ * PlayerPostThink()
+ */
+static qboolean PyQ_PlayerPostThink(edict_t *edict, qboolean after)
+{
+    return CallEntityCallback(PyQ_callback_player_post_think, edict, after);
+}
+
+/**
+ * ClientKill()
+ */
+static qboolean PyQ_ClientKill(edict_t *edict, qboolean after)
+{
+    return CallEntityCallback(PyQ_callback_client_kill, edict, after);
+}
+
+/**
+ * ClientConnect()
+ */
+static qboolean PyQ_ClientConnect(edict_t *edict, qboolean after)
+{
+    return CallEntityCallback(PyQ_callback_client_connect, edict, after);
+}
+
+/**
+ * PutClientInServer()
+ */
+static qboolean PyQ_PutClientInServer(edict_t *edict, qboolean after)
+{
+    return CallEntityCallback(PyQ_callback_put_client_in_server, edict, after);
+}
+
+/**
+ * SetNewParms()
+ */
+static qboolean PyQ_SetNewParms(qboolean after)
+{
+    return CallSimpleCallback(PyQ_callback_set_new_parms, after);
+}
+
+/**
+ * SetChangeParms()
+ */
+static qboolean PyQ_SetChangeParms(edict_t *edict, qboolean after)
+{
+    return CallEntityCallback(PyQ_callback_set_change_parms, edict, after);
+}
+
+//------------------------------------------------------------------------------
+// Python/QuakeC Adapter
+
+qboolean PyQ_OverrideSpawn(edict_t *edict)
+{
+    return PyQ_EntitySpawn(edict, false);
+}
+
+void PyQ_SupplementSpawn(edict_t *edict)
+{
+    PyQ_EntitySpawn(edict, true);
+}
+
+qboolean PyQ_OverrideProgram(func_t function_index)
+{
+    edict_t *self = PROG_TO_EDICT(pr_global_struct->self);
+    edict_t *other = PROG_TO_EDICT(pr_global_struct->other);
+
+    if (function_index == pr_global_struct->StartFrame) {
+        return PyQ_StartFrame(false);
+    }
+    
+    if (function_index == pr_global_struct->PlayerPreThink) {
+        return PyQ_PlayerPreThink(self, false);
+    }
+    
+    if (function_index == pr_global_struct->PlayerPostThink) {
+        return PyQ_PlayerPostThink(self, false);
+    }
+    
+    if (function_index == pr_global_struct->ClientKill) {
+        return PyQ_ClientKill(self, false);
+    }
+    
+    if (function_index == pr_global_struct->ClientConnect) {
+        return PyQ_ClientConnect(self, false);
+    }
+    
+    if (function_index == pr_global_struct->PutClientInServer) {
+        return PyQ_PutClientInServer(self, false);
+    }
+    
+    if (function_index == pr_global_struct->SetNewParms) {
+        return PyQ_SetNewParms(false);
+    }
+
+    if (function_index == pr_global_struct->SetChangeParms) {
+        return PyQ_SetChangeParms(self, false);
+    }
+
+    if (function_index == self->v.touch) {
+        return PyQ_EntityTouch(self, other, false);
+    }
+
+    if (function_index == self->v.think) {
+        return PyQ_EntityThink(self, false);
+    }
+
+    if (function_index == self->v.blocked) {
+        return PyQ_EntityBlocked(self, other, false);
+    }
+
+    return false;
+}
+
+void PyQ_SupplementProgram(func_t function_index)
+{
+    edict_t *self = PROG_TO_EDICT(pr_global_struct->self);
+    edict_t *other = PROG_TO_EDICT(pr_global_struct->other);
+
+    if (function_index == pr_global_struct->StartFrame) {
+        PyQ_StartFrame(true);
+        return;
+    }
+    
+    if (function_index == pr_global_struct->PlayerPreThink) {
+        PyQ_PlayerPreThink(self, true);
+        return;
+    }
+    
+    if (function_index == pr_global_struct->PlayerPostThink) {
+        PyQ_PlayerPostThink(self, true);
+        return;
+    }
+    
+    if (function_index == pr_global_struct->ClientKill) {
+        PyQ_ClientKill(self, true);
+        return;
+    }
+    
+    if (function_index == pr_global_struct->ClientConnect) {
+        PyQ_ClientConnect(self, true);
+        return;
+    }
+    
+    if (function_index == pr_global_struct->PutClientInServer) {
+        PyQ_PutClientInServer(self, true);
+        return;
+    }
+    
+    if (function_index == pr_global_struct->SetNewParms) {
+        PyQ_SetNewParms(true);
+        return;
+    }
+
+    if (function_index == pr_global_struct->SetChangeParms) {
+        PyQ_SetChangeParms(self, true);
+        return;
+    }
+
+    if (function_index == self->v.touch) {
+        PyQ_EntityTouch(self, other, true);
+        return;
+    }
+
+    if (function_index == self->v.think) {
+        PyQ_EntityThink(self, true);
+        return;
+    }
+
+    if (function_index == self->v.blocked) {
+        PyQ_EntityBlocked(self, other, true);
+        return;
+    }
 }

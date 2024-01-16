@@ -1615,9 +1615,6 @@ void SV_SpawnServer (const char *server)
 		if (host_client->active)
 			SV_SendServerinfo (host_client);
 
-// tuorqai: load Python scripts
-	PyQ_LoadScripts ();
-
 	Con_DPrintf ("Server spawned.\n");
 }
 

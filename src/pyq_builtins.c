@@ -19,71 +19,106 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
-static qboolean CheckEdict(PyQ_Entity *self)
+/**
+ * Checks if Entity object is valid and returns edict pointer.
+ */
+static edict_t *GetEdict(PyQ_Entity *self)
 {
-    if (!sv.active) {
-        PyErr_SetString(PyExc_ReferenceError, "Server is not running");
-        return false;
+    // sv.active is set to true a bit too late
+    // if (!sv.active) {
+    //     PyErr_SetString(PyExc_ReferenceError, "Server is not running");
+    //     return false;
+    // }
+
+    // worldspawn is valid between levels
+    if (self->index == 0) {
+        return sv.edicts;
     }
+
+    // client entity is also valid
+    if (self->index >= 1 && self->index <= svs.maxclients) {
+        return EDICT_NUM(self->index);
+    }
+
+    // for anything else make basic checks
 
     if (self->servernumber != PyQ_servernumber) {
         PyErr_SetString(PyExc_ReferenceError, "Entity was created in another server");
-        return false;
+        return NULL;
     }
 
-    if (!self->edict) {
-        PyErr_SetString(PyExc_ReferenceError, "edict is NULL");
-        return false;
+    if (self->index < 0 || self->index >= sv.num_edicts) {
+        PyErr_SetString(PyExc_ReferenceError, "invalid entity index");
+        return NULL;
     }
 
-    return true;
+    return EDICT_NUM(self->index);
 }
 
+/**
+ * quake.Entity.__new__
+ */
 static PyObject *E_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
     PyQ_Entity *self = (PyQ_Entity *) type->tp_alloc(type, 0);
 
     if (self) {
         self->servernumber = PyQ_servernumber;
-        self->edict = NULL;
+        self->index = -1;
     }
 
     return (PyObject *) self;
 }
 
+/**
+ * quake.Entity.__init__
+ */
 static int E_init(PyQ_Entity *self, PyObject *args, PyObject *kwds)
 {
     return 0;
 }
 
+/**
+ * quake.Entity.__dealloc__
+ */
 static void E_dealloc(PyQ_Entity *self)
 {
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
+/**
+ * quake.Entity.__repr__
+ */
 static PyObject *E_repr(PyQ_Entity *self)
 {
-    if (!CheckEdict(self)) {
+    edict_t *edict = GetEdict(self);
+
+    if (!edict) {
         PyErr_Clear();
         return PyUnicode_FromFormat("<invalid entity reference at %p>", self);
     }
 
     return PyUnicode_FromFormat("<edict #%d, classname \"%s\">",
-        NUM_FOR_EDICT(self->edict), PR_GetString(self->edict->v.classname));
+        self->index, PR_GetString(edict->v.classname));
 }
 
+/**
+ * quake.Entity.__richcmp__
+ */
 static PyObject *E_richcmp(PyQ_Entity *a, PyQ_Entity *b, int op)
 {
-    if (!CheckEdict(a)) {
+    edict_t *aedict, *bedict;
+
+    if (!(aedict = GetEdict(a))) {
         return NULL;
     }
 
-    if (!CheckEdict(b)) {
+    if (!(bedict = GetEdict(b))) {
         return NULL;
     }
 
     if (op == Py_EQ) {
-        if (a->edict == b->edict) {
+        if (aedict == bedict) {
             Py_RETURN_TRUE;
         } else {
             Py_RETURN_FALSE;
@@ -93,103 +128,272 @@ static PyObject *E_richcmp(PyQ_Entity *a, PyQ_Entity *b, int op)
     Py_RETURN_NOTIMPLEMENTED;
 }
 
+/**
+ * quake.Entity.setorigin(origin)
+ */
+static PyObject *E_setorigin(PyQ_Entity *self, PyObject *args)
+{
+    edict_t *edict;
+    vec3_t org;
+
+    if (!(edict = GetEdict(self))) {
+        return NULL;
+    }
+
+    if (!PyArg_ParseTuple(args, "(fff)", &org[0], &org[1], &org[2])) {
+        return NULL;
+    }
+
+    VectorCopy(org, edict->v.origin);
+    SV_LinkEdict(edict, false);
+
+    Py_RETURN_NONE;
+}
+
+/**
+ * quake.Entity.setmodel(model)
+ */
+static PyObject *E_setmodel(PyQ_Entity *self, PyObject *args)
+{
+    edict_t *edict;
+    int index;
+    char const *model, **cache;
+
+    if (!(edict = GetEdict(self))) {
+        return NULL;
+    }
+
+    if (!PyArg_ParseTuple(args, "s", &model)) {
+        return NULL;
+    }
+
+    index = 0;
+
+    for (cache = sv.model_precache; *cache; cache++) {
+        if (!Q_strcmp(*cache, model)) {
+            break;
+        }
+        index++;
+    }
+
+    if (!*cache) {
+        PyErr_SetString(PyExc_ValueError, "model not precached");
+        return NULL;
+    }
+
+    edict->v.model = PR_SetEngineString(*cache);
+    edict->v.modelindex = index;
+
+    Py_RETURN_NONE;
+}
+
+/**
+ * quake.Entity.setsize(mins, maxs)
+ */
+static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
+{
+    edict_t *edict;
+    vec3_t mins, maxs;
+
+    if (!(edict = GetEdict(self))) {
+        return NULL;
+    }
+
+    if (!PyArg_ParseTuple(args, "(fff)(fff)",
+        &mins[0], &mins[1], &maxs[2],
+        &maxs[0], &maxs[1], &maxs[2])) {
+        return NULL;
+    }
+
+    VectorCopy(mins, edict->v.mins);
+    VectorCopy(maxs, edict->v.maxs);
+    VectorSubtract(maxs, mins, edict->v.size);
+    SV_LinkEdict(edict, false);
+
+    Py_RETURN_NONE;
+}
+
+/**
+ * Macro to get edict's float field.
+ */
 #define GET_FLOAT_VALUE(self, field) \
     do { \
-        if (!CheckEdict(self)) { \
+        edict_t *edict; \
+        if (!(edict = GetEdict(self))) { \
             return NULL; \
         } \
-        return Py_BuildValue("f", self->edict->field); \
+        return Py_BuildValue("f", edict->field); \
     } while (0)
 
+/**
+ * Macro to set edict's float field.
+ */
 #define SET_FLOAT_VALUE(self, field, value) \
     do { \
+        edict_t *edict; \
         double d; \
-        if (!CheckEdict(self)) { \
+        if (!(edict = GetEdict(self))) { \
             return -1; \
         } \
         d = PyFloat_AsDouble(value); \
-        self->edict->field = (float) d; \
+        edict->field = (float) d; \
         return 0; \
     } while (0)
 
+/**
+ * Macro to get edict's int field.
+ * Used only for fields that are supposed to hold flags.
+ */
+#define GET_INT_VALUE(self, field) \
+    do { \
+        edict_t *edict; \
+        if (!(edict = GetEdict(self))) { \
+            return NULL; \
+        } \
+        return Py_BuildValue("i", (int) edict->field); \
+    } while (0)
+
+/**
+ * Macro to set edict's int field.
+ * Used only for fields that are supposed to hold flags.
+ */
+#define SET_INT_VALUE(self, field, value) \
+    do { \
+        edict_t *edict; \
+        long n; \
+        if (!(edict = GetEdict(self))) { \
+            return -1; \
+        } \
+        n = PyLong_AsLong(value); \
+        edict->field = (float) n; \
+        return 0; \
+    } while (0)
+
+/**
+ * Macro to get edict's vec3_t field.
+ */
 #define GET_VEC3_VALUE(self, field) \
     do { \
-        if (!CheckEdict(self)) { \
+        edict_t *edict; \
+        if (!(edict = GetEdict(self))) { \
             return NULL; \
         } \
         return Py_BuildValue("(fff)", \
-            self->edict->field[0], \
-            self->edict->field[1], \
-            self->edict->field[2]); \
+            edict->field[0], \
+            edict->field[1], \
+            edict->field[2]); \
     } while (0)
 
+/**
+ * Macro to get edict's vec3_t field.
+ */
 #define SET_VEC3_VALUE(self, field, value) \
     do { \
+        edict_t *edict; \
         float x, y, z; \
-        if (!CheckEdict(self)) { \
+        if (!(edict = GetEdict(self))) { \
             return -1; \
         } \
         if (!PyArg_ParseTuple(value, "fff", &x, &y, &z)) { \
             return -1; \
         } \
-        self->edict->field[0] = (float) x; \
-        self->edict->field[1] = (float) y; \
-        self->edict->field[2] = (float) z; \
+        edict->field[0] = (float) x; \
+        edict->field[1] = (float) y; \
+        edict->field[2] = (float) z; \
         return 0; \
     } while (0)
 
+/**
+ * Macro to get edict's string field.
+ */
 #define GET_STRING_VALUE(self, field) \
     do { \
-        if (!CheckEdict(self)) { \
+        edict_t *edict; \
+        if (!(edict = GetEdict(self))) { \
             return NULL; \
         } \
-        return PyUnicode_FromString(PR_GetString(self->edict->field)); \
+        return PyUnicode_FromString(PR_GetString(edict->field)); \
     } while (0)
 
+/**
+ * Macro to get edict's string field.
+ */
 #define SET_STRING_VALUE(self, field, value) \
     do { \
-        if (!CheckEdict(self)) { \
+        edict_t *edict; \
+        PyObject *bytes; \
+        char const *str; \
+        char *stored; \
+        if (!(edict = GetEdict(self))) { \
             return -1; \
         } \
-        PyErr_SetString(PyExc_NotImplementedError, "setting string values is not supported yet"); \
-        return -1; \
+        bytes = PyUnicode_AsASCIIString(value); \
+        if (!bytes) { \
+            return -1; \
+        } \
+        str = PyBytes_AsString(bytes); \
+        if (!str) { \
+            Py_DECREF(bytes); \
+            return -1; \
+        } \
+        stored = PyQ_string_storage[self->index].field; \
+        Q_strcpy(stored, str); \
+        edict->field = PR_SetEngineString(stored); \
+        Py_DECREF(bytes); \
+        return 0; \
     } while (0)
 
+/**
+ * Macro to get edict's entity field.
+ */
 #define GET_ENTITY_VALUE(self, field) \
     do { \
+        edict_t *edict; \
         PyQ_Entity *entity; \
-        if (!CheckEdict(self)) { \
+        if (!(edict = GetEdict(self))) { \
             return NULL; \
         } \
         entity = (PyQ_Entity *) PyObject_CallNoArgs((PyObject *) &PyQ_Entity_type); \
         if (entity) { \
-            entity->edict = PROG_TO_EDICT(self->edict->field); \
+            entity->index = edict->field; \
         } \
         return (PyObject *) entity; \
     } while (0)
 
+/**
+ * Macro to set edict's entity field.
+ */
 #define SET_ENTITY_VALUE(self, field, value) \
     do { \
-        if (!CheckEdict(self)) { \
+        edict_t *edict; \
+        if (!(edict = GetEdict(self))) { \
             return -1; \
         } \
         PyErr_SetString(PyExc_NotImplementedError, "setting entity values is not supported yet"); \
         return -1; \
     } while (0)
 
+/**
+ * Macro to get edict's func_t field.
+ */
 #define GET_FUNC_VALUE(self, field) \
     do { \
-        if (!CheckEdict(self)) { \
+        edict_t *edict; \
+        if (!(edict = GetEdict(self))) { \
             return NULL; \
         } \
         return PyUnicode_FromFormat("QuakeC function %s (#%d)", \
-            PR_GetString(pr_functions[self->edict->field].s_name), \
-            self->edict->field); \
+            PR_GetString(pr_functions[edict->field].s_name), \
+            edict->field); \
     } while (0)
 
+/**
+ * Macro to set edict's func_t field.
+ */
 #define SET_FUNC_VALUE(self, field, value) \
     do { \
-        if (!CheckEdict(self)) { \
+        edict_t *edict; \
+        if (!(edict = GetEdict(self))) { \
             return -1; \
         } \
         PyErr_SetString(PyExc_NotImplementedError, "modifying func values is not supported"); \
@@ -201,29 +405,14 @@ static PyObject *E_getmodelindex(PyQ_Entity *self, void *closure)
     GET_FLOAT_VALUE(self, v.modelindex);
 }
 
-static int E_setmodelindex(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_FLOAT_VALUE(self, v.modelindex, value);
-}
-
 static PyObject *E_getabsmin(PyQ_Entity *self, void *closure)
 {
     GET_VEC3_VALUE(self, v.absmin);
 }
 
-static int E_setabsmin(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_VEC3_VALUE(self, v.absmin, value);
-}
-
 static PyObject *E_getabsmax(PyQ_Entity *self, void *closure)
 {
     GET_VEC3_VALUE(self, v.absmax);
-}
-
-static int E_setabsmax(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_VEC3_VALUE(self, v.absmax, value);
 }
 
 static PyObject *E_getltime(PyQ_Entity *self, void *closure)
@@ -261,19 +450,9 @@ static PyObject *E_getorigin(PyQ_Entity *self, void *closure)
     GET_VEC3_VALUE(self, v.origin);
 }
 
-static int E_setorigin(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_VEC3_VALUE(self, v.origin, value);
-}
-
 static PyObject *E_getoldorigin(PyQ_Entity *self, void *closure)
 {
     GET_VEC3_VALUE(self, v.oldorigin);
-}
-
-static int E_setoldorigin(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_VEC3_VALUE(self, v.oldorigin, value);
 }
 
 static PyObject *E_getvelocity(PyQ_Entity *self, void *closure)
@@ -331,11 +510,6 @@ static PyObject *E_getmodel(PyQ_Entity *self, void *closure)
     GET_STRING_VALUE(self, v.model);
 }
 
-static int E_setmodel(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_STRING_VALUE(self, v.model, value);
-}
-
 static PyObject *E_getframe(PyQ_Entity *self, void *closure)
 {
     GET_FLOAT_VALUE(self, v.frame);
@@ -358,12 +532,12 @@ static int E_setskin(PyQ_Entity *self, PyObject *value, void *closure)
 
 static PyObject *E_geteffects(PyQ_Entity *self, void *closure)
 {
-    GET_FLOAT_VALUE(self, v.effects);
+    GET_INT_VALUE(self, v.effects);
 }
 
 static int E_seteffects(PyQ_Entity *self, PyObject *value, void *closure)
 {
-    SET_FLOAT_VALUE(self, v.effects, value);
+    SET_INT_VALUE(self, v.effects, value);
 }
 
 static PyObject *E_getmins(PyQ_Entity *self, void *closure)
@@ -371,29 +545,14 @@ static PyObject *E_getmins(PyQ_Entity *self, void *closure)
     GET_VEC3_VALUE(self, v.mins);
 }
 
-static int E_setmins(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_VEC3_VALUE(self, v.mins, value);
-}
-
 static PyObject *E_getmaxs(PyQ_Entity *self, void *closure)
 {
     GET_VEC3_VALUE(self, v.maxs);
 }
 
-static int E_setmaxs(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_VEC3_VALUE(self, v.maxs, value);
-}
-
 static PyObject *E_getsize(PyQ_Entity *self, void *closure)
 {
     GET_VEC3_VALUE(self, v.size);
-}
-
-static int E_setsize(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_VEC3_VALUE(self, v.size, value);
 }
 
 static PyObject *E_gettouch(PyQ_Entity *self, void *closure)
@@ -558,12 +717,12 @@ static int E_setammo_cells(PyQ_Entity *self, PyObject *value, void *closure)
 
 static PyObject *E_getitems(PyQ_Entity *self, void *closure)
 {
-    GET_FLOAT_VALUE(self, v.items);
+    GET_INT_VALUE(self, v.items);
 }
 
 static int E_setitems(PyQ_Entity *self, PyObject *value, void *closure)
 {
-    SET_FLOAT_VALUE(self, v.items, value);
+    SET_INT_VALUE(self, v.items, value);
 }
 
 static PyObject *E_gettakedamage(PyQ_Entity *self, void *closure)
@@ -698,12 +857,12 @@ static int E_setenemy(PyQ_Entity *self, PyObject *value, void *closure)
 
 static PyObject *E_getflags(PyQ_Entity *self, void *closure)
 {
-    GET_FLOAT_VALUE(self, v.flags);
+    GET_INT_VALUE(self, v.flags);
 }
 
 static int E_setflags(PyQ_Entity *self, PyObject *value, void *closure)
 {
-    SET_FLOAT_VALUE(self, v.flags, value);
+    SET_INT_VALUE(self, v.flags, value);
 }
 
 static PyObject *E_getcolormap(PyQ_Entity *self, void *closure)
@@ -828,12 +987,12 @@ static int E_setgoalentity(PyQ_Entity *self, PyObject *value, void *closure)
 
 static PyObject *E_getspawnflags(PyQ_Entity *self, void *closure)
 {
-    GET_FLOAT_VALUE(self, v.spawnflags);
+    GET_INT_VALUE(self, v.spawnflags);
 }
 
 static int E_setspawnflags(PyQ_Entity *self, PyObject *value, void *closure)
 {
-    SET_FLOAT_VALUE(self, v.spawnflags, value);
+    SET_INT_VALUE(self, v.spawnflags, value);
 }
 
 static PyObject *E_gettarget(PyQ_Entity *self, void *closure)
@@ -904,6 +1063,7 @@ static PyObject *E_getmovedir(PyQ_Entity *self, void *closure)
 static int E_setmovedir(PyQ_Entity *self, PyObject *value, void *closure)
 {
     SET_VEC3_VALUE(self, v.movedir, value);
+    return 0;
 }
 
 static PyObject *E_getmessage(PyQ_Entity *self, void *closure)
@@ -967,6 +1127,9 @@ static int E_setnoise3(PyQ_Entity *self, PyObject *value, void *closure)
 }
 
 static PyMethodDef E_methods[] = {
+    { "setorigin",      (PyCFunction) E_setorigin,      METH_VARARGS },
+    { "setmodel",       (PyCFunction) E_setmodel,       METH_VARARGS },
+    { "setsize",        (PyCFunction) E_setsize,        METH_VARARGS },
     { NULL },
 };
 
@@ -975,26 +1138,26 @@ static PyMemberDef E_members[] = {
 };
 
 static PyGetSetDef E_getset[] = {
-    { "modelindex",     (getter) E_getmodelindex,       (setter) E_setmodelindex },
-    { "absmin",         (getter) E_getabsmin,           (setter) E_setabsmin },
-    { "absmax",         (getter) E_getabsmax,           (setter) E_setabsmax },
+    { "modelindex",     (getter) E_getmodelindex,       (setter) NULL },
+    { "absmin",         (getter) E_getabsmin,           (setter) NULL },
+    { "absmax",         (getter) E_getabsmax,           (setter) NULL },
     { "ltime",          (getter) E_getltime,            (setter) E_setltime },
     { "movetype",       (getter) E_getmovetype,         (setter) E_setmovetype },
     { "solid",          (getter) E_getsolid,            (setter) E_setsolid },
-    { "origin",         (getter) E_getorigin,           (setter) E_setorigin },
-    { "oldorigin",      (getter) E_getoldorigin,        (setter) E_setoldorigin },
+    { "origin",         (getter) E_getorigin,           (setter) NULL },
+    { "oldorigin",      (getter) E_getoldorigin,        (setter) NULL },
     { "velocity",       (getter) E_getvelocity,         (setter) E_setvelocity },
     { "angles",         (getter) E_getangles,           (setter) E_setangles },
     { "avelocity",      (getter) E_getavelocity,        (setter) E_setavelocity },
     { "punchangle",     (getter) E_getpunchangle,       (setter) E_setpunchangle },
     { "classname",      (getter) E_getclassname,        (setter) E_setclassname },
-    { "model",          (getter) E_getmodel,            (setter) E_setmodel },
+    { "model",          (getter) E_getmodel,            (setter) NULL },
     { "frame",          (getter) E_getframe,            (setter) E_setframe },
     { "skin",           (getter) E_getskin,             (setter) E_setskin },
     { "effects",        (getter) E_geteffects,          (setter) E_seteffects },
-    { "mins",           (getter) E_getmins,             (setter) E_setmins },
-    { "maxs",           (getter) E_getmaxs,             (setter) E_setmaxs },
-    { "size",           (getter) E_getsize,             (setter) E_setsize },
+    { "mins",           (getter) E_getmins,             (setter) NULL },
+    { "maxs",           (getter) E_getmaxs,             (setter) NULL },
+    { "size",           (getter) E_getsize,             (setter) NULL },
     { "touch",          (getter) E_gettouch,            (setter) E_settouch },
     { "use",            (getter) E_getuse,              (setter) E_setuse },
     { "think",          (getter) E_getthink,            (setter) E_setthink },
@@ -1109,51 +1272,155 @@ PyTypeObject PyQ_Entity_type = {
 
 //------------------------------------------------------------------------------
 
-static PyObject *M_console_print(PyObject *self, PyObject *args)
+/**
+ * quake.time()
+ */
+static PyObject *quake__time(PyObject *self, PyObject *args)
 {
-    char const *msg;
+    return PyFloat_FromDouble(sv.time);
+}
 
-    if (!PyArg_ParseTuple(args, "s", &msg)) {
+/**
+ * quake.spawn() [#14 in Quakec]
+ */
+static PyObject *quake__spawn(PyObject *self, PyObject *args)
+{
+    PyQ_Entity *entity;
+
+    entity = (PyQ_Entity *) PyObject_CallNoArgs((PyObject *) &PyQ_Entity_type);
+
+    if (!entity) {
         return NULL;
     }
 
-    Con_Printf("%s", msg);
-    Py_RETURN_NONE;
+    entity->index = NUM_FOR_EDICT(ED_Alloc());
+
+    return (PyObject *) entity;
 }
 
-static PyObject *M_console_error(PyObject *self, PyObject *args)
+/**
+ * quake.remove(ent) [#15 in Quakec]
+ */
+static PyObject *quake__remove(PyObject *self, PyObject *args)
 {
-    char const *msg;
+    PyQ_Entity *entity;
+    edict_t *edict;
 
-    if (!PyArg_ParseTuple(args, "s", &msg)) {
+    if (!PyArg_ParseTuple(args, "O", &entity)) {
         return NULL;
     }
 
-    Con_Printf("\x02%s", msg);
+    if (!(edict = GetEdict(entity))) {
+        return NULL;
+    }
+
+    ED_Free(edict);
     Py_RETURN_NONE;
 }
 
-static PyObject *M_get_entities(PyObject *self, PyObject *args)
+/**
+ * quake.bprint(message) [#23 in Quakec]
+ */
+static PyObject *quake__bprint(PyObject *self, PyObject *args)
 {
-    PyObject *list;
-    
+    char const *msg;
+
     if (!sv.active) {
         PyErr_SetString(PyExc_RuntimeError, "server is not running");
         return NULL;
     }
 
-    list = PyList_New(sv.num_edicts);
+    if (!PyArg_ParseTuple(args, "s", &msg)) {
+        return NULL;
+    }
+
+    SV_BroadcastPrintf("%s\n", msg);
+    Py_RETURN_NONE;
+}
+
+/**
+ * quake.sprint(ent, msg) [#24 in Quakec]
+ */
+static PyObject *quake__sprint(PyObject *self, PyObject *args)
+{
+    PyQ_Entity *entity;
+    char const *msg;
+
+    if (!sv.active) {
+        PyErr_SetString(PyExc_RuntimeError, "server is not running");
+        return NULL;
+    }
+
+    if (!PyArg_ParseTuple(args, "Os", &entity, &msg)) {
+        return NULL;
+    }
+
+    if (entity->index < 1 || entity->index > svs.maxclients) {
+        PyErr_SetString(PyExc_ValueError, "entity is non-client");
+        return NULL;
+    }
+
+    // FIXME: add \n at the end
+
+    MSG_WriteChar(&svs.clients[entity->index - 1].message, svc_print);
+    MSG_WriteString(&svs.clients[entity->index - 1].message, msg);
+
+    Py_RETURN_NONE;
+}
+
+/**
+ * quake.centerprint(ent, msg) [#73 in Quakec]
+ */
+static PyObject *quake__centerprint(PyObject *self, PyObject *args)
+{
+    PyQ_Entity *entity;
+    char const *msg;
+
+    if (!sv.active) {
+        PyErr_SetString(PyExc_RuntimeError, "server is not running");
+        return NULL;
+    }
+
+    if (!PyArg_ParseTuple(args, "Os", &entity, &msg)) {
+        return NULL;
+    }
+
+    if (entity->index < 1 || entity->index > svs.maxclients) {
+        PyErr_SetString(PyExc_ValueError, "entity is non-client");
+        return NULL;
+    }
+
+    MSG_WriteChar(&svs.clients[entity->index - 1].message, svc_centerprint);
+    MSG_WriteString(&svs.clients[entity->index - 1].message, msg);
+
+    Py_RETURN_NONE;
+}
+
+/**
+ * quake.entities()
+ */
+static PyObject *quake__entities(PyObject *self, PyObject *args)
+{
+    PyObject *list;
+
+    list = PyList_New(0);
 
     if (list) {
         qboolean failed = false;
         int i;
 
-        for (i = 0; i < PyList_Size(list); i++) {
+        for (i = 0; i < sv.num_edicts; i++) {
+            // ignore free ents
+            if (EDICT_NUM(i)->free) {
+                continue;
+            }
+
             PyQ_Entity *entity = (PyQ_Entity *) PyObject_CallNoArgs((PyObject *) &PyQ_Entity_type);
 
             if (entity) {
-                entity->edict = EDICT_NUM(i);
-                PyList_SET_ITEM(list, i, (PyObject *) entity);
+                entity->index = i;
+                PyList_Append(list, (PyObject *) entity);
+                Py_DECREF(entity);
             } else {
                 failed = true;
                 break;
@@ -1169,26 +1436,155 @@ static PyObject *M_get_entities(PyObject *self, PyObject *args)
     return list;
 }
 
-static PyMethodDef M_methods[] = {
-    { "console_print",      M_console_print,    METH_VARARGS },
-    { "console_error",      M_console_error,    METH_VARARGS },
-    { "get_entities",       M_get_entities,     METH_NOARGS },
+/**
+ * quake.precache_sound(name)
+ */
+static PyObject *quake__precache_sound(PyObject *self, PyObject *args)
+{
+    int i;
+    char const *name;
+
+    if (!PyArg_ParseTuple(args, "s", &name)) {
+        return NULL;
+    }
+
+    for (i = 0; i < MAX_SOUNDS; i++) {
+        if (!sv.sound_precache[i]) {
+            sv.sound_precache[i] = name;
+            Py_RETURN_NONE;
+        }
+
+        if (!strcmp(sv.sound_precache[i], name)) {
+            Py_RETURN_NONE;
+        }
+    }
+
+    PyErr_SetString(PyExc_RuntimeError, "precache_sound: overflow");
+    return NULL;
+}
+
+/**
+ * quake.precache_sound(name)
+ */
+static PyObject *quake__precache_model(PyObject *self, PyObject *args)
+{
+    int i;
+    char const *name;
+
+    if (!PyArg_ParseTuple(args, "s", &name)) {
+        return NULL;
+    }
+
+    for (i = 0; i < MAX_MODELS; i++) {
+        if (!sv.model_precache[i]) {
+            sv.model_precache[i] = name;
+            sv.models[i] = Mod_ForName(name, true);
+            Py_RETURN_NONE;
+        }
+
+        if (!strcmp(sv.model_precache[i], name)) {
+            Py_RETURN_NONE;
+        }
+    }
+
+    PyErr_SetString(PyExc_RuntimeError, "precache_model: overflow");
+    return NULL;
+}
+
+/**
+ * quake.particle(org, dir=(0.0, 0.0, 0.0), color=0, count=1)
+ */
+static PyObject *quake__particle(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    static char *kwlist[] = { "org", "dir", "color", "count", NULL };
+
+    vec3_t org;
+    vec3_t dir = { 0, 0, 0 };
+    int color = 0;
+    int count = 1;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs,
+        "(fff)|(fff)ii", kwlist,
+        &org[0], &org[1], &org[2],
+        &dir[0], &dir[1], &dir[2],
+        &color, &count)) {
+        return NULL;
+    }
+
+    if (sv.active) {
+        SV_StartParticle(org, dir, color, count);
+    }
+
+    Py_RETURN_NONE;
+}
+
+/**
+ * quake.sound(entity, sample, chan=0, vol=1.0, attn=0)
+ */
+static PyObject *quake__sound(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    static char *kwlist[] = { "entity", "sample", "chan", "vol", "attn", NULL };
+
+    PyQ_Entity *entity;
+    char const *sample;
+    int chan = 0;
+    float vol = 1.0;
+    int attn = 0;
+
+    edict_t *edict;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs,
+        "Os|ifi", kwlist,
+        &entity, &sample,
+        &chan, &vol, &attn)) {
+        return NULL;
+    }
+
+    if (Py_IsNone((PyObject *) entity)) {
+        edict = sv.edicts;
+    } else {
+        edict = GetEdict(entity);
+
+        if (!edict) {
+            return NULL;
+        }
+    }
+
+    if (sv.active) {
+        SV_StartSound(edict, chan, sample, vol, attn);
+    }
+
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef quake_methods[] = {
+    { "time",           quake__time,                    METH_NOARGS },
+    { "bprint",         quake__bprint,                  METH_VARARGS },
+    { "sprint",         quake__sprint,                  METH_VARARGS },
+    { "centerprint",    quake__centerprint,             METH_VARARGS },
+    { "entities",       quake__entities,                METH_NOARGS },
+    { "spawn",          quake__spawn,                   METH_VARARGS },
+    { "remove",         quake__remove,                  METH_VARARGS },
+    { "precache_sound", quake__precache_sound,          METH_VARARGS },
+    { "precache_model", quake__precache_model,          METH_VARARGS },
+    { "particle",       (PyCFunction) quake__particle,  METH_VARARGS },
+    { "sound",          (PyCFunction) quake__sound,     METH_VARARGS | METH_KEYWORDS },
     { NULL },
 };
 
-static PyModuleDef M_module = {
+static PyModuleDef quake_module = {
     PyModuleDef_HEAD_INIT,
     "quake",                        // m_name
     NULL,                           // m_doc
     -1,                             // m_size
-    M_methods,                      // m_methods
+    quake_methods,                  // m_methods
     NULL,                           // m_slots
     NULL,                           // m_traverse
     NULL,                           // m_clear
     NULL,                           // m_free
 };
 
-PyObject *PyQ_InitBuiltins(void)
+PyObject *PyQ_quake_init(void)
 {
     PyObject *module;
 
@@ -1196,7 +1592,7 @@ PyObject *PyQ_InitBuiltins(void)
         return NULL;
     }
 
-    module = PyModule_Create(&M_module);
+    module = PyModule_Create(&quake_module);
 
     if (module) {
         Py_INCREF(&PyQ_Entity_type);
@@ -1276,4 +1672,54 @@ PyObject *PyQ_InitBuiltins(void)
     }
 
     return NULL;
+}
+
+//------------------------------------------------------------------------------
+// 'quakecl' module
+
+static PyObject *quakecl__console_print(PyObject *self, PyObject *args)
+{
+    char const *msg;
+
+    if (!PyArg_ParseTuple(args, "s", &msg)) {
+        return NULL;
+    }
+
+    Con_Printf("%s", msg);
+    Py_RETURN_NONE;
+}
+
+static PyObject *quakecl__console_error(PyObject *self, PyObject *args)
+{
+    char const *msg;
+
+    if (!PyArg_ParseTuple(args, "s", &msg)) {
+        return NULL;
+    }
+
+    Con_Printf("%c%s", 2, msg);
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef quakecl_methods[] = {
+    { "console_print", quakecl__console_print, METH_VARARGS },
+    { "console_error", quakecl__console_error, METH_VARARGS },
+    { NULL },
+};
+
+static PyModuleDef quakecl_module = {
+    PyModuleDef_HEAD_INIT,
+    "quakecl",                      // m_name
+    NULL,                           // m_doc
+    -1,                             // m_size
+    quakecl_methods,                // m_methods
+    NULL,                           // m_slots
+    NULL,                           // m_traverse
+    NULL,                           // m_clear
+    NULL,                           // m_free
+};
+
+PyObject *PyQ_quakecl_init(void)
+{
+    return PyModule_Create(&quakecl_module);
 }

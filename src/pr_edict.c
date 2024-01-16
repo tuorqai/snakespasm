@@ -1037,6 +1037,14 @@ void ED_LoadFromFile (const char *data)
 			continue;
 		}
 
+	// tuorqai: reserve this space beforehand
+		SV_ReserveSignonSpace (512);
+
+	// tuorqai: check if overridden in Python
+		if (PyQ_OverrideSpawn (ent)) {
+			continue;
+		}
+
 	// look for the spawn function
 		func = ED_FindFunction ( PR_GetString(ent->v.classname) );
 
@@ -1048,10 +1056,13 @@ void ED_LoadFromFile (const char *data)
 			continue;
 		}
 
-		SV_ReserveSignonSpace (512);
+		// SV_ReserveSignonSpace (512);
 
 		pr_global_struct->self = EDICT_TO_PROG(ent);
 		PR_ExecuteProgram (func - pr_functions);
+
+// tuorqai: 'afterentityspawn' callback
+		PyQ_SupplementSpawn (ent);
 	}
 
 	Con_DPrintf ("%i entities inhibited\n", inhibit);
