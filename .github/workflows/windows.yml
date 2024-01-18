@@ -33,8 +33,11 @@ jobs:
         New-Item -Path . -Name "output" -ItemType "directory"
         Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.12.1/python-3.12.1-embed-amd64.zip" -OutFile "python-3.12.1-embed-amd64.zip"
         Expand-Archive -Path "python-3.12.1-embed-amd64.zip" -DestinationPath "output"
+        Remove-Item -Path "output/LICENSE.txt"
+        Get-ChildItem -Path "SDL2-$env:SDL2_VERSION/lib/x64/SDL2.dll" | Copy-Item -Destination "output"
         Get-ChildItem -Path "build/Release/snakespasm.exe" | Copy-Item -Destination "output"
         Get-ChildItem -Path "runtime" | Copy-Item -Destination "output" -Recurse
+        Remove-Item -Path "output/.gitignore"
         Get-ChildItem -Path "output" | Compress-Archive -DestinationPath "snakespasm.zip"
 
     - uses: actions/upload-artifact@v3
