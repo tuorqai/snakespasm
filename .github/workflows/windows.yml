@@ -25,7 +25,7 @@ jobs:
 
     - name: Build
       run: |
-        cmake -B build -A x64 -DSDL2_ROOT=SDL2-2.28.5
+        cmake -B build -A x64 -DSDL2_ROOT="SDL2-$env:SDL2_VERSION"
         cmake --build build --config Release
 
     - uses: actions/upload-artifact@v3
