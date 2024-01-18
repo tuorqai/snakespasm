@@ -20,7 +20,7 @@ jobs:
 
     - name: Download SDL2
       run: |
-        Invoke-WebRequest -Uri "https://github.com/libsdl-org/SDL/releases/download/release-$env:SDL2_VERSION/SDL2-devel-$env:SDL2_VERSION-VC.zip" -OutFile .
+        Invoke-WebRequest -Uri "https://github.com/libsdl-org/SDL/releases/download/release-$env:SDL2_VERSION/SDL2-devel-$env:SDL2_VERSION-VC.zip" -OutFile "SDL2-devel-$env:SDL2_VERSION-VC.zip"
         Expand-Archive -Path "SDL2-devel-$env:SDL2_VERSION-VC.zip" -DestinationPath .
 
     - name: Build
