@@ -17,7 +17,7 @@ option(USE_CODEC_UMX "Enable UMX codec" OFF)
 set(MP3LIB "mad" CACHE STRING "MP3 decoding library: mad or mpg123")
 set(VORBISLIB "vorbis" CACHE STRING "Vorbis decoding library: vorbis or tremor")
 
-add_executable(${PROJECT_NAME}
+add_executable(${PROJECT_NAME} WIN32
     src/strlcat.c
     src/strlcpy.c
     src/gl_refrag.c
@@ -100,7 +100,10 @@ if(WIN32)
         src/net_wipx.c
         src/pl_win.c
         src/sys_sdl_win.c
-        win32/QuakeSpasm.res)
+        win32/QuakeSpasm.rc)
+
+    target_compile_definitions(${PROJECT_NAME} PRIVATE _USE_WINSOCK2)
+    target_link_libraries(${PROJECT_NAME} PRIVATE winmm ws2_32)
 else()
     target_sources(${PROJECT_NAME} PRIVATE
         src/net_bsd.c
@@ -125,9 +128,18 @@ if(DO_USERDIRS)
 endif()
 
 if(USE_SDL2)
-    find_package(SDL2 REQUIRED)
+    find_package(SDL2 REQUIRED CONFIG)
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_SDL2)
-    target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2)
+
+    if(TARGET SDL2::SDL2)
+        if(TARGET SDL2::SDL2main)
+            target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2main)
+        endif()
+        target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2)
+    else()
+        target_include_directories(${PROJECT_NAME} PRIVATE ${SDL2_INCLUDE_DIRS})
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${SDL2_LIBRARIES})
+    endif()
 else()
     find_package(SDL REQUIRED)
     target_include_directories(${PROJECT_NAME} PRIVATE ${SDL_INCLUDE_DIRS})
@@ -151,12 +163,14 @@ if(USE_CODEC_OPUS)
 endif()
 
 if(USE_CODEC_VORBIS)
-    # TODO: find package
+    find_package(Ogg REQUIRED CONFIG)
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_CODEC_VORBIS)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ogg)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Ogg::ogg)
     if(VORBISLIB STREQUAL "vorbis")
-        target_link_libraries(${PROJECT_NAME} PRIVATE vorbisfile vorbis)
+        find_package(Vorbis REQUIRED CONFIG)
+        target_link_libraries(${PROJECT_NAME} PRIVATE Vorbis::vorbis Vorbis::vorbisfile)
     elseif(VORBISLIB STREQUAL "tremor")
+        # TODO: find package
         target_compile_definitions(${PROJECT_NAME} PRIVATE VORBIS_USE_TREMOR)
         target_link_libraries(${PROJECT_NAME} PRIVATE vorbisidec)
     else()
@@ -198,5 +212,9 @@ endif()
 
 if(USE_CODEC_UMX)
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_CODEC_UMX)
+endif()
+
+if(MSVC)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
