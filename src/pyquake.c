@@ -437,11 +437,10 @@ void PyQ_Init(void)
 
     if (PyStatus_Exception(status)) {
         if (PyStatus_IsError(status)) {
-            Con_Printf("Python error: %s\n", status.err_msg);
+            Sys_Error("Python error: %s\n", status.err_msg);
         } else if (PyStatus_IsExit(status)) {
-            Con_Printf("Python critical error: %s (%d)\n", status.err_msg, status.exitcode);
+            Sys_Error("Python critical error: %s (%d)\n", status.err_msg, status.exitcode);
         }
-        return;
     }
 
     PyQ_InsertModulePath(com_basedir);
