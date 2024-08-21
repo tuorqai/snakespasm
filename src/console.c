@@ -66,6 +66,7 @@ qboolean	con_initialized;
 
 int		con_mode; 	// ~tuorqai~
 sizebuf_t	con_rawbuf; 	// ~tuorqai~
+qboolean	con_raw_incomplete; 	// ~tuorqai~
 
 /*
 ================
@@ -1158,7 +1159,7 @@ Con_RawRepl -- tuorqai
 */
 int Con_RawRepl (char const *line)
 {
-	int pyrun_status;
+	int pyrun_status; // -1: error, 0: ok, 1: incomplete
 
 	Con_RawBufAddText(line);
 
@@ -1172,7 +1173,27 @@ int Con_RawRepl (char const *line)
 		// the code is complete or erroneous -- flush it
 		SZ_Clear(&con_rawbuf);
 	
+	con_raw_incomplete = (pyrun_status == 1);
+
 	return pyrun_status;
+}
+
+/*
+====================
+Con_PromptChar -- tuorqai
+====================
+*/
+char Con_PromptChar(void)
+{
+	if (con_mode == con_mode_raw) {
+		if (con_raw_incomplete) {
+			return 0x8e;
+		} else {
+			return 0x8d;
+		}
+	}
+
+	return ']';
 }
 
 /*

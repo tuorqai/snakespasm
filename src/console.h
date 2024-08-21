@@ -70,11 +70,13 @@ void Con_DebugLog (const char *msg);
 enum { con_mode_default, con_mode_raw };
 extern int con_mode;
 extern sizebuf_t con_rawbuf;
+extern qboolean con_raw_incomplete;
 void Con_EnterRawMode (void);
 void Con_ExitRawMode (void);
 void Con_RawBufAddText(const char *text);
 void Con_RawTab (int length);
 int Con_RawRepl (char const *line);
+char Con_PromptChar(void);
 
 #endif	/* __CONSOLE_H */
 

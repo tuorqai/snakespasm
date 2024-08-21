@@ -244,7 +244,6 @@ void Key_Console (int key)
 	int	history_line_last;
 	size_t		len;
 	char *workline = key_lines[edit_line];
-	int repl_status;
 
 	switch (key)
 	{
@@ -254,7 +253,7 @@ void Key_Console (int key)
 		Con_Printf ("%s\n", workline);
 		if (con_mode == con_mode_raw)
 		{
-			repl_status = Con_RawRepl (workline + 1);
+			Con_RawRepl (workline + 1);
 		}
 		else
 		{
@@ -268,13 +267,7 @@ void Key_Console (int key)
 			edit_line = (edit_line + 1) & (CMDLINES - 1);
 
 		history_line = edit_line;
-		if (con_mode == con_mode_raw)
-			if (repl_status == 1)
-				key_lines[edit_line][0] = 0x8e;
-			else
-				key_lines[edit_line][0] = 0x8d;
-		else
-			key_lines[edit_line][0] = ']';
+		key_lines[edit_line][0] = Con_PromptChar();
 		key_lines[edit_line][1] = 0; //johnfitz -- otherwise old history items show up in the new edit line
 		key_linepos = 1;
 		if (cls.state == ca_disconnected)
@@ -457,7 +450,7 @@ void Key_Console (int key)
 	case 'C':
 		if (keydown[K_CTRL]) {		/* Ctrl+C: abort the line -- S.A */
 			Con_Printf ("%s\n", workline);
-			workline[0] = ']';
+			workline[0] = Con_PromptChar();
 			workline[1] = 0;
 			key_linepos = 1;
 			history_line= edit_line;
