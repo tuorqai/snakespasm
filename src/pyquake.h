@@ -10,6 +10,16 @@
 
 //------------------------------------------------------------------------------
 
+typedef struct {
+    PyObject_HEAD
+    vec3_t v;
+    char reprbuf[32];
+} PyQ_Vector;
+
+extern PyTypeObject PyQ_Vector_type;
+
+//------------------------------------------------------------------------------
+
 #define PyQ_ENTITY_STRLEN           64
 
 extern int PyQ_servernumber;
@@ -39,6 +49,8 @@ typedef struct {
 } PyQ_Entity;
 
 extern PyTypeObject PyQ_Entity_type;
+
+//------------------------------------------------------------------------------
 
 void PyQ_Init(void);
 void PyQ_Shutdown(void);

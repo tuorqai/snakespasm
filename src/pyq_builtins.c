@@ -19,6 +19,200 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
+//-------------------------------------------------------------------------------
+// quake.Vector class
+
+/**
+ * quake.Vector.__new__
+ */
+static PyObject *V_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+{
+    PyQ_Vector *self = (PyQ_Vector *) type->tp_alloc(type, 0);
+
+    if (self) {
+        self->v[0] = 0.f;
+        self->v[1] = 0.f;
+        self->v[2] = 0.f;
+        self->reprbuf[0] = '\0';
+    }
+
+    return (PyObject *) self;
+}
+
+/**
+ * quake.Vector.__init__
+ */
+static int V_init(PyQ_Vector *self, PyObject *args, PyObject *kwds)
+{
+    float x, y, z;
+
+    if (!PyArg_ParseTuple(args, "fff", &x, &y, &z)) {
+        return -1;
+    }
+
+    self->v[0] = x;
+    self->v[1] = y;
+    self->v[2] = z;
+
+    return 0;
+}
+
+/**
+ * quake.Vector.__dealloc__
+ */
+static void V_dealloc(PyQ_Vector *self)
+{
+    Py_TYPE(self)->tp_free((PyObject *) self);
+}
+
+/**
+ * quake.Vector.__repr__
+ */
+static PyObject *V_repr(PyQ_Vector *self)
+{
+    snprintf(self->reprbuf, sizeof(self->reprbuf), "(%5.1f %5.1f %5.1f)",
+             self->v[0], self->v[1], self->v[2]);
+
+    return PyUnicode_FromString(self->reprbuf);
+}
+
+/**
+ * quake.Vector.__richcmp__
+ */
+static PyObject *V_richcmp(PyQ_Vector *a, PyQ_Vector *b, int op)
+{
+    if (op == Py_EQ) {
+        if (VectorCompare(a->v, b->v)) {
+            Py_RETURN_TRUE;
+        } else {
+            Py_RETURN_FALSE;
+        }
+    }
+
+    Py_RETURN_NOTIMPLEMENTED;
+}
+
+static PyObject *V_getx(PyQ_Vector *self, void *closure)
+{
+    return Py_BuildValue("f", self->v[0]);
+}
+
+static int V_setx(PyQ_Vector *self, PyObject *value, void *closure)
+{
+    double d = PyFloat_AsDouble(value);
+
+    if (PyErr_Occurred()) {
+        return -1;
+    }
+
+    self->v[0] = (float) d;
+    return 0;
+}
+
+static PyObject *V_gety(PyQ_Vector *self, void *closure)
+{
+    return Py_BuildValue("f", self->v[1]);
+}
+
+static int V_sety(PyQ_Vector *self, PyObject *value, void *closure)
+{
+    double d = PyFloat_AsDouble(value);
+
+    if (PyErr_Occurred()) {
+        return -1;
+    }
+
+    self->v[1] = (float) d;
+    return 0;
+}
+
+static PyObject *V_getz(PyQ_Vector *self, void *closure)
+{
+    return Py_BuildValue("f", self->v[2]);
+}
+
+static int V_setz(PyQ_Vector *self, PyObject *value, void *closure)
+{
+    double d = PyFloat_AsDouble(value);
+
+    if (PyErr_Occurred()) {
+        return -1;
+    }
+
+    self->v[2] = (float) d;
+    return 0;
+}
+
+static PyMethodDef V_methods[] = {
+    { NULL },
+};
+
+static PyMemberDef V_members[] = {
+    { NULL },
+};
+
+static PyGetSetDef V_getset[] = {
+    { "x", (getter) V_getx, (setter) V_setx },
+    { "y", (getter) V_gety, (setter) V_sety },
+    { "z", (getter) V_getz, (setter) V_setz },
+    { NULL },
+};
+
+PyTypeObject PyQ_Vector_type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "quake.Vector",                             // tp_name
+    sizeof(PyQ_Vector),                         // tp_basicsize
+    0,                                          // tp_itemsize
+    (destructor) V_dealloc,                     // tp_dealloc
+    0,                                          // tp_vectorcall_offset
+    NULL,                                       // tp_getattr
+    NULL,                                       // tp_setattr
+    NULL,                                       // tp_as_async
+    (reprfunc) V_repr,                          // tp_repr
+    NULL,                                       // tp_as_number
+    NULL,                                       // tp_as_sequence
+    NULL,                                       // tp_as_mapping
+    NULL,                                       // tp_hash
+    NULL,                                       // tp_call
+    NULL,                                       // tp_str
+    NULL,                                       // tp_getattro
+    NULL,                                       // tp_setattro
+    NULL,                                       // tp_as_buffer
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,   // tp_flags
+    PyDoc_STR("Quake Vector"),                  // tp_doc
+    NULL,                                       // tp_traverse
+    NULL,                                       // tp_clear
+    (richcmpfunc) V_richcmp,                    // tp_richcompare
+    0,                                          // tp_weaklistoffset
+    NULL,                                       // tp_iter
+    NULL,                                       // tp_iternext
+    V_methods,                                  // tp_methods
+    V_members,                                  // tp_members
+    V_getset,                                   // tp_getset
+    NULL,                                       // tp_base
+    NULL,                                       // tp_dict
+    NULL,                                       // tp_descr_get
+    NULL,                                       // tp_descr_set
+    0,                                          // tp_dictoffset
+    (initproc) V_init,                          // tp_init
+    NULL,                                       // tp_alloc
+    V_new,                                      // tp_new
+    NULL,                                       // tp_free
+    NULL,                                       // tp_is_gc
+    NULL,                                       // tp_bases
+    NULL,                                       // tp_mro
+    NULL,                                       // tp_cache
+    NULL,                                       // tp_subclasses
+    NULL,                                       // tp_weaklist
+    NULL,                                       // tp_del
+    0,                                          // tp_version_tag
+    NULL,                                       // tp_finalize
+    NULL,                                       // tp_vectorcall
+};
+
+//-------------------------------------------------------------------------------
+// quake.Entity class
+
 /**
  * Checks if Entity object is valid and returns edict pointer.
  */
@@ -275,13 +469,12 @@ static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
 #define GET_VEC3_VALUE(self, field) \
     do { \
         edict_t *edict; \
+        PyObject *args; \
         if (!(edict = GetEdict(self))) { \
             return NULL; \
         } \
-        return Py_BuildValue("(fff)", \
-            edict->field[0], \
-            edict->field[1], \
-            edict->field[2]); \
+        args = Py_BuildValue("(fff)", edict->field[0], edict->field[1], edict->field[2]); \
+        return PyObject_CallObject((PyObject *) &PyQ_Vector_type, args); \
     } while (0)
 
 /**
@@ -294,13 +487,21 @@ static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
         if (!(edict = GetEdict(self))) { \
             return -1; \
         } \
-        if (!PyArg_ParseTuple(value, "fff", &x, &y, &z)) { \
-            return -1; \
+        if (PyObject_TypeCheck(value, &PyQ_Vector_type)) { \
+            edict->field[0] = ((PyQ_Vector *) value)->v[0]; \
+            edict->field[1] = ((PyQ_Vector *) value)->v[1]; \
+            edict->field[2] = ((PyQ_Vector *) value)->v[2]; \
+            return 0; \
         } \
-        edict->field[0] = (float) x; \
-        edict->field[1] = (float) y; \
-        edict->field[2] = (float) z; \
-        return 0; \
+        if (PyArg_ParseTuple(value, "fff", &x, &y, &z)) { \
+            edict->field[0] = x; \
+            edict->field[1] = y; \
+            edict->field[2] = z; \
+            return 0; \
+        } \
+        PyErr_Clear(); \
+        PyErr_SetString(PyExc_TypeError, "this value must be either a Vector or a tuple with 3 numbers"); \
+        return -1; \
     } while (0)
 
 /**
@@ -1063,7 +1264,6 @@ static PyObject *E_getmovedir(PyQ_Entity *self, void *closure)
 static int E_setmovedir(PyQ_Entity *self, PyObject *value, void *closure)
 {
     SET_VEC3_VALUE(self, v.movedir, value);
-    return 0;
 }
 
 static PyObject *E_getmessage(PyQ_Entity *self, void *closure)
@@ -1588,6 +1788,10 @@ PyObject *PyQ_quake_init(void)
 {
     PyObject *module;
 
+    if (PyType_Ready(&PyQ_Vector_type) == -1) {
+        return NULL;
+    }
+
     if (PyType_Ready(&PyQ_Entity_type) == -1) {
         return NULL;
     }
@@ -1595,6 +1799,7 @@ PyObject *PyQ_quake_init(void)
     module = PyModule_Create(&quake_module);
 
     if (module) {
+        Py_INCREF(&PyQ_Vector_type);
         Py_INCREF(&PyQ_Entity_type);
 
         PyModule_AddIntConstant(module, "IT_AXE", IT_AXE);
@@ -1663,11 +1868,14 @@ PyObject *PyQ_quake_init(void)
         PyModule_AddIntConstant(module, "FL_WATERJUMP", FL_WATERJUMP);
         PyModule_AddIntConstant(module, "FL_JUMPRELEASED", FL_JUMPRELEASED);
 
-        if (PyModule_AddObject(module, "Entity", (PyObject *) &PyQ_Entity_type) == 0) {
-            return module;
+        if (PyModule_AddObject(module, "Vector", (PyObject *) &PyQ_Vector_type) == 0) {
+            if (PyModule_AddObject(module, "Entity", (PyObject *) &PyQ_Entity_type) == 0) {
+                return module;
+            }
         }
 
         Py_DECREF(&PyQ_Entity_type);
+        Py_DECREF(&PyQ_Vector_type);
         Py_DECREF(module);
     }
 
