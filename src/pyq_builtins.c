@@ -33,6 +33,7 @@ static PyObject *V_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         self->v[0] = 0.f;
         self->v[1] = 0.f;
         self->v[2] = 0.f;
+        self->p = &self->v;
         self->reprbuf[0] = '\0';
     }
 
@@ -44,17 +45,25 @@ static PyObject *V_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
  */
 static int V_init(PyQ_Vector *self, PyObject *args, PyObject *kwds)
 {
+    Py_ssize_t p;
     float x, y, z;
 
-    if (!PyArg_ParseTuple(args, "fff", &x, &y, &z)) {
-        return -1;
+    if (PyArg_ParseTuple(args, "n", &p)) {
+        self->p = (vec3_t *) p;
+        return 0;
     }
 
-    self->v[0] = x;
-    self->v[1] = y;
-    self->v[2] = z;
+    if (PyArg_ParseTuple(args, "fff", &x, &y, &z)) {
+        self->v[0] = x;
+        self->v[1] = y;
+        self->v[2] = z;
+        return 0;
+    }
 
-    return 0;
+    PyErr_Clear();
+    PyErr_SetString(PyExc_TypeError, "3 numbers or a pointer is required");
+
+    return -1;
 }
 
 /**
@@ -71,7 +80,7 @@ static void V_dealloc(PyQ_Vector *self)
 static PyObject *V_repr(PyQ_Vector *self)
 {
     snprintf(self->reprbuf, sizeof(self->reprbuf), "(%5.1f %5.1f %5.1f)",
-             self->v[0], self->v[1], self->v[2]);
+             (*self->p)[0], (*self->p)[1], (*self->p)[2]);
 
     return PyUnicode_FromString(self->reprbuf);
 }
@@ -82,7 +91,7 @@ static PyObject *V_repr(PyQ_Vector *self)
 static PyObject *V_richcmp(PyQ_Vector *a, PyQ_Vector *b, int op)
 {
     if (op == Py_EQ) {
-        if (VectorCompare(a->v, b->v)) {
+        if (VectorCompare((*a->p), (*b->p))) {
             Py_RETURN_TRUE;
         } else {
             Py_RETURN_FALSE;
@@ -94,7 +103,7 @@ static PyObject *V_richcmp(PyQ_Vector *a, PyQ_Vector *b, int op)
 
 static PyObject *V_getx(PyQ_Vector *self, void *closure)
 {
-    return Py_BuildValue("f", self->v[0]);
+    return Py_BuildValue("f", (*self->p)[0]);
 }
 
 static int V_setx(PyQ_Vector *self, PyObject *value, void *closure)
@@ -105,13 +114,13 @@ static int V_setx(PyQ_Vector *self, PyObject *value, void *closure)
         return -1;
     }
 
-    self->v[0] = (float) d;
+    (*self->p)[0] = (float) d;
     return 0;
 }
 
 static PyObject *V_gety(PyQ_Vector *self, void *closure)
 {
-    return Py_BuildValue("f", self->v[1]);
+    return Py_BuildValue("f", (*self->p)[1]);
 }
 
 static int V_sety(PyQ_Vector *self, PyObject *value, void *closure)
@@ -122,13 +131,13 @@ static int V_sety(PyQ_Vector *self, PyObject *value, void *closure)
         return -1;
     }
 
-    self->v[1] = (float) d;
+    (*self->p)[1] = (float) d;
     return 0;
 }
 
 static PyObject *V_getz(PyQ_Vector *self, void *closure)
 {
-    return Py_BuildValue("f", self->v[2]);
+    return Py_BuildValue("f", (*self->p)[2]);
 }
 
 static int V_setz(PyQ_Vector *self, PyObject *value, void *closure)
@@ -139,7 +148,7 @@ static int V_setz(PyQ_Vector *self, PyObject *value, void *closure)
         return -1;
     }
 
-    self->v[2] = (float) d;
+    (*self->p)[2] = (float) d;
     return 0;
 }
 
@@ -487,7 +496,7 @@ static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
         if (!(edict = GetEdict(self))) { \
             return NULL; \
         } \
-        args = Py_BuildValue("(fff)", edict->field[0], edict->field[1], edict->field[2]); \
+        args = Py_BuildValue("(n)", &edict->field); \
         return PyObject_CallObject((PyObject *) &PyQ_Vector_type, args); \
     } while (0)
 
@@ -502,9 +511,9 @@ static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
             return -1; \
         } \
         if (PyObject_TypeCheck(value, &PyQ_Vector_type)) { \
-            edict->field[0] = ((PyQ_Vector *) value)->v[0]; \
-            edict->field[1] = ((PyQ_Vector *) value)->v[1]; \
-            edict->field[2] = ((PyQ_Vector *) value)->v[2]; \
+            edict->field[0] = (*((PyQ_Vector *) value)->p)[0]; \
+            edict->field[1] = (*((PyQ_Vector *) value)->p)[1]; \
+            edict->field[2] = (*((PyQ_Vector *) value)->p)[2]; \
             return 0; \
         } \
         if (PyArg_ParseTuple(value, "fff", &x, &y, &z)) { \

@@ -13,6 +13,7 @@
 typedef struct {
     PyObject_HEAD
     vec3_t v;
+    vec3_t *p;
     char reprbuf[32];
 } PyQ_Vector;
 
