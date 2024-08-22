@@ -297,6 +297,20 @@ static PyObject *E_repr(PyQ_Entity *self)
 }
 
 /**
+ * quake.Entity.__hash__
+ */
+static Py_hash_t E_hash(PyQ_Entity *self)
+{
+    edict_t *edict;
+
+    if (!(edict = GetEdict(self))) {
+        return -1;
+    }
+
+    return NUM_FOR_EDICT(edict);
+}
+
+/**
  * quake.Entity.__richcmp__
  */
 static PyObject *E_richcmp(PyQ_Entity *a, PyQ_Entity *b, int op)
@@ -394,7 +408,7 @@ static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
     }
 
     if (!PyArg_ParseTuple(args, "(fff)(fff)",
-        &mins[0], &mins[1], &maxs[2],
+        &mins[0], &mins[1], &mins[2],
         &maxs[0], &maxs[1], &maxs[2])) {
         return NULL;
     }
@@ -1432,7 +1446,7 @@ PyTypeObject PyQ_Entity_type = {
     NULL,                                       // tp_as_number
     NULL,                                       // tp_as_sequence
     NULL,                                       // tp_as_mapping
-    NULL,                                       // tp_hash
+    (hashfunc) E_hash,                          // tp_hash
     NULL,                                       // tp_call
     NULL,                                       // tp_str
     NULL,                                       // tp_getattro
