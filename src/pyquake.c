@@ -753,18 +753,6 @@ qboolean PyQ_OverrideProgram(func_t function_index)
         return PyQ_SetChangeParms(self, false);
     }
 
-    if (function_index == self->v.touch) {
-        return PyQ_EntityTouch(self, other, false);
-    }
-
-    if (function_index == self->v.think) {
-        return PyQ_EntityThink(self, false);
-    }
-
-    if (function_index == self->v.blocked) {
-        return PyQ_EntityBlocked(self, other, false);
-    }
-
     return false;
 }
 
@@ -812,18 +800,44 @@ void PyQ_SupplementProgram(func_t function_index)
         PyQ_SetChangeParms(self, true);
         return;
     }
+}
 
-    if (function_index == self->v.touch) {
+qboolean PyQ_OverrideEntityMethod(int em)
+{
+    edict_t *self = PROG_TO_EDICT(pr_global_struct->self);
+    edict_t *other = PROG_TO_EDICT(pr_global_struct->other);
+
+    if (em == em_touch) {
+        return PyQ_EntityTouch(self, other, false);
+    }
+    
+    if (em == em_think) {
+        return PyQ_EntityThink(self, false);
+    }
+    
+    if (em == em_blocked) {
+        return PyQ_EntityBlocked(self, other, false);
+    }
+
+    return false;
+}
+
+void PyQ_SupplementEntityMethod(int em)
+{
+    edict_t *self = PROG_TO_EDICT(pr_global_struct->self);
+    edict_t *other = PROG_TO_EDICT(pr_global_struct->other);
+
+    if (em == em_touch) {
         PyQ_EntityTouch(self, other, true);
         return;
     }
-
-    if (function_index == self->v.think) {
+    
+    if (em == em_think) {
         PyQ_EntityThink(self, true);
         return;
     }
-
-    if (function_index == self->v.blocked) {
+    
+    if (em == em_blocked) {
         PyQ_EntityBlocked(self, other, true);
         return;
     }

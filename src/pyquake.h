@@ -74,6 +74,16 @@ qboolean PyQ_OverrideProgram(func_t function_index);
 // Called from PR_ExecuteProgram() in pr_exec.c after QuakeC function execute
 void PyQ_SupplementProgram(func_t function_index);
 
+enum
+{
+    em_touch,
+    em_think,
+    em_blocked,
+};
+
+qboolean PyQ_OverrideEntityMethod(int em);
+void PyQ_SupplementEntityMethod(int em);
+
 //------------------------------------------------------------------------------
 
 #endif // QUAKE_PQ_H

@@ -140,7 +140,13 @@ qboolean SV_RunThink (edict_t *ent)
 	pr_global_struct->time = thinktime;
 	pr_global_struct->self = EDICT_TO_PROG(ent);
 	pr_global_struct->other = EDICT_TO_PROG(sv.edicts);
-	PR_ExecuteProgram (ent->v.think);
+
+	// [tuorqai] overwritten
+
+	if (!PyQ_OverrideEntityMethod (em_think)) {
+		PR_ExecuteProgram (ent->v.think);
+		PyQ_SupplementEntityMethod (em_think);
+	}
 
 	return !ent->free;
 }
@@ -160,18 +166,31 @@ void SV_Impact (edict_t *e1, edict_t *e2)
 	old_other = pr_global_struct->other;
 
 	pr_global_struct->time = sv.time;
-	if (e1->v.touch && e1->v.solid != SOLID_NOT)
-	{
+
+	// [tuorqai] overwritten
+
+	if (e1->v.solid != SOLID_NOT) {
 		pr_global_struct->self = EDICT_TO_PROG(e1);
 		pr_global_struct->other = EDICT_TO_PROG(e2);
-		PR_ExecuteProgram (e1->v.touch);
+
+		if (!PyQ_OverrideEntityMethod(em_touch)) {
+			if (e1->v.touch) {
+				PR_ExecuteProgram(e1->v.touch);
+				PyQ_SupplementEntityMethod(em_touch);
+			}
+		}
 	}
 
-	if (e2->v.touch && e2->v.solid != SOLID_NOT)
-	{
+	if (e2->v.solid != SOLID_NOT) {
 		pr_global_struct->self = EDICT_TO_PROG(e2);
 		pr_global_struct->other = EDICT_TO_PROG(e1);
-		PR_ExecuteProgram (e2->v.touch);
+
+		if (!PyQ_OverrideEntityMethod(em_touch)) {
+			if (e2->v.touch) {
+				PR_ExecuteProgram(e2->v.touch);
+				PyQ_SupplementEntityMethod(em_touch);
+			}
+		}
 	}
 
 	pr_global_struct->self = old_self;
@@ -533,12 +552,15 @@ void SV_PushMove (edict_t *pusher, float movetime)
 
 			// if the pusher has a "blocked" function, call it
 			// otherwise, just stay in place until the obstacle is gone
-			if (pusher->v.blocked)
-			{
-				pr_global_struct->self = EDICT_TO_PROG(pusher);
-				pr_global_struct->other = EDICT_TO_PROG(check);
-				PR_ExecuteProgram (pusher->v.blocked);
-			}
+			// [tuorqai] modified
+			if (!PyQ_OverrideEntityMethod (em_blocked))
+				if (pusher->v.blocked)
+				{
+					pr_global_struct->self = EDICT_TO_PROG(pusher);
+					pr_global_struct->other = EDICT_TO_PROG(check);
+					PR_ExecuteProgram (pusher->v.blocked);
+					PyQ_SupplementEntityMethod (em_blocked);
+				}
 
 		// move back any entities we already moved
 			for (i=0 ; i<num_moved ; i++)
@@ -590,7 +612,14 @@ void SV_Physics_Pusher (edict_t *ent)
 		pr_global_struct->time = sv.time;
 		pr_global_struct->self = EDICT_TO_PROG(ent);
 		pr_global_struct->other = EDICT_TO_PROG(sv.edicts);
-		PR_ExecuteProgram (ent->v.think);
+
+		// [tuorqai]
+
+		if (!PyQ_OverrideEntityMethod (em_think)) {
+			PR_ExecuteProgram (ent->v.think);
+			PyQ_SupplementEntityMethod (em_think);
+		}
+
 		if (ent->free)
 			return;
 	}
