@@ -53,6 +53,8 @@ static int V_init(PyQ_Vector *self, PyObject *args, PyObject *kwds)
         return 0;
     }
 
+    PyErr_Clear();
+
     if (PyArg_ParseTuple(args, "fff", &x, &y, &z)) {
         self->v[0] = x;
         self->v[1] = y;
@@ -351,17 +353,17 @@ static PyObject *E_richcmp(PyQ_Entity *a, PyQ_Entity *b, int op)
 static PyObject *E_setorigin(PyQ_Entity *self, PyObject *args)
 {
     edict_t *edict;
-    vec3_t org;
+    PyQ_Vector *vec;
 
     if (!(edict = GetEdict(self))) {
         return NULL;
     }
 
-    if (!PyArg_ParseTuple(args, "(fff)", &org[0], &org[1], &org[2])) {
+    if (!PyArg_ParseTuple(args, "O!", &PyQ_Vector_type, &vec)) {
         return NULL;
     }
 
-    VectorCopy(org, edict->v.origin);
+    VectorCopy(*vec->p, edict->v.origin);
     SV_LinkEdict(edict, false);
 
     Py_RETURN_NONE;
@@ -410,21 +412,20 @@ static PyObject *E_setmodel(PyQ_Entity *self, PyObject *args)
 static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
 {
     edict_t *edict;
-    vec3_t mins, maxs;
+    PyQ_Vector *mins;
+    PyQ_Vector *maxs;
 
     if (!(edict = GetEdict(self))) {
         return NULL;
     }
 
-    if (!PyArg_ParseTuple(args, "(fff)(fff)",
-        &mins[0], &mins[1], &mins[2],
-        &maxs[0], &maxs[1], &maxs[2])) {
+    if (!PyArg_ParseTuple(args, "O!O!", &PyQ_Vector_type, &mins, &PyQ_Vector_type, &maxs)) {
         return NULL;
     }
 
-    VectorCopy(mins, edict->v.mins);
-    VectorCopy(maxs, edict->v.maxs);
-    VectorSubtract(maxs, mins, edict->v.size);
+    VectorCopy(*mins->p, edict->v.mins);
+    VectorCopy(*maxs->p, edict->v.maxs);
+    VectorSubtract(*maxs->p, *mins->p, edict->v.size);
     SV_LinkEdict(edict, false);
 
     Py_RETURN_NONE;
@@ -506,25 +507,16 @@ static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
 #define SET_VEC3_VALUE(self, field, value) \
     do { \
         edict_t *edict; \
-        float x, y, z; \
         if (!(edict = GetEdict(self))) { \
             return -1; \
         } \
-        if (PyObject_TypeCheck(value, &PyQ_Vector_type)) { \
-            edict->field[0] = (*((PyQ_Vector *) value)->p)[0]; \
-            edict->field[1] = (*((PyQ_Vector *) value)->p)[1]; \
-            edict->field[2] = (*((PyQ_Vector *) value)->p)[2]; \
-            return 0; \
+        if (!PyObject_TypeCheck(value, &PyQ_Vector_type)) { \
+            return -1; \
         } \
-        if (PyArg_ParseTuple(value, "fff", &x, &y, &z)) { \
-            edict->field[0] = x; \
-            edict->field[1] = y; \
-            edict->field[2] = z; \
-            return 0; \
-        } \
-        PyErr_Clear(); \
-        PyErr_SetString(PyExc_TypeError, "this value must be either a Vector or a tuple with 3 numbers"); \
-        return -1; \
+        edict->field[0] = (*((PyQ_Vector *) value)->p)[0]; \
+        edict->field[1] = (*((PyQ_Vector *) value)->p)[1]; \
+        edict->field[2] = (*((PyQ_Vector *) value)->p)[2]; \
+        return 0; \
     } while (0)
 
 /**
@@ -541,6 +533,8 @@ static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
 
 /**
  * Macro to get edict's string field.
+ * (later comment) I don't believe I was sober while
+ * writing this code.
  */
 #define SET_STRING_VALUE(self, field, value) \
     do { \
@@ -599,6 +593,8 @@ static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
 
 /**
  * Macro to get edict's func_t field.
+ * Doesn't really return any function, just shows
+ * a brief description.
  */
 #define GET_FUNC_VALUE(self, field) \
     do { \
@@ -609,19 +605,6 @@ static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
         return PyUnicode_FromFormat("QuakeC function %s (#%d)", \
             PR_GetString(pr_functions[edict->field].s_name), \
             edict->field); \
-    } while (0)
-
-/**
- * Macro to set edict's func_t field.
- */
-#define SET_FUNC_VALUE(self, field, value) \
-    do { \
-        edict_t *edict; \
-        if (!(edict = GetEdict(self))) { \
-            return -1; \
-        } \
-        PyErr_SetString(PyExc_NotImplementedError, "modifying func values is not supported"); \
-        return -1; \
     } while (0)
 
 static PyObject *E_getmodelindex(PyQ_Entity *self, void *closure)
@@ -784,19 +767,9 @@ static PyObject *E_gettouch(PyQ_Entity *self, void *closure)
     GET_FUNC_VALUE(self, v.touch);
 }
 
-static int E_settouch(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_FUNC_VALUE(self, v.touch, value);
-}
-
 static PyObject *E_getuse(PyQ_Entity *self, void *closure)
 {
     GET_FUNC_VALUE(self, v.use);
-}
-
-static int E_setuse(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_FUNC_VALUE(self, v.use, value);
 }
 
 static PyObject *E_getthink(PyQ_Entity *self, void *closure)
@@ -804,19 +777,9 @@ static PyObject *E_getthink(PyQ_Entity *self, void *closure)
     GET_FUNC_VALUE(self, v.think);
 }
 
-static int E_setthink(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_FUNC_VALUE(self, v.think, value);
-}
-
 static PyObject *E_getblocked(PyQ_Entity *self, void *closure)
 {
     GET_FUNC_VALUE(self, v.blocked);
-}
-
-static int E_setblocked(PyQ_Entity *self, PyObject *value, void *closure)
-{
-    SET_FUNC_VALUE(self, v.blocked, value);
 }
 
 static PyObject *E_getnextthink(PyQ_Entity *self, void *closure)
@@ -1381,10 +1344,10 @@ static PyGetSetDef E_getset[] = {
     { "mins",           (getter) E_getmins,             (setter) NULL },
     { "maxs",           (getter) E_getmaxs,             (setter) NULL },
     { "size",           (getter) E_getsize,             (setter) NULL },
-    { "touch",          (getter) E_gettouch,            (setter) E_settouch },
-    { "use",            (getter) E_getuse,              (setter) E_setuse },
-    { "think",          (getter) E_getthink,            (setter) E_setthink },
-    { "blocked",        (getter) E_getblocked,          (setter) E_setblocked },
+    { "touch",          (getter) E_gettouch,            (setter) NULL },
+    { "use",            (getter) E_getuse,              (setter) NULL },
+    { "think",          (getter) E_getthink,            (setter) NULL },
+    { "blocked",        (getter) E_getblocked,          (setter) NULL },
     { "nextthink",      (getter) E_getnextthink,        (setter) E_setnextthink },
     { "groundentity",   (getter) E_getgroundentity,     (setter) E_setgroundentity },
     { "health",         (getter) E_gethealth,           (setter) E_sethealth },
