@@ -154,6 +154,92 @@ static int V_setz(PyQ_Vector *self, PyObject *value, void *closure)
     return 0;
 }
 
+static PyObject *V_add(PyQ_Vector *a, PyQ_Vector *b)
+{
+    vec3_t c;
+    PyObject *args, *result;
+
+    if (!PyObject_TypeCheck(b, &PyQ_Vector_type)) {
+        PyErr_SetString(PyExc_TypeError, "second operand is not a Vector");
+        return NULL;
+    }
+
+    VectorAdd(*a->p, *b->p, c);
+
+    if (!(args = Py_BuildValue("(fff)", c[0], c[1], c[2]))) {
+        return NULL;
+    }
+
+    result = PyObject_CallObject((PyObject *) &PyQ_Vector_type, args);
+    Py_DECREF(args);
+
+    return result;
+}
+
+static PyObject *V_subtract(PyQ_Vector *a, PyQ_Vector *b)
+{
+    vec3_t c;
+    PyObject *args, *result;
+
+    if (!PyObject_TypeCheck(b, &PyQ_Vector_type)) {
+        PyErr_SetString(PyExc_TypeError, "second operand is not a Vector");
+        return NULL;
+    }
+
+    VectorSubtract(*a->p, *b->p, c);
+
+    if (!(args = Py_BuildValue("(fff)", c[0], c[1], c[2]))) {
+        return NULL;
+    }
+
+    result = PyObject_CallObject((PyObject *) &PyQ_Vector_type, args);
+    Py_DECREF(args);
+
+    return result;
+}
+
+static PyObject *V_multiply(PyQ_Vector *a, PyObject *b)
+{
+    vec3_t c;
+    double s;
+    PyObject *args, *result;
+
+    s = PyFloat_AsDouble(b);
+
+    if (PyErr_Occurred()) {
+        return NULL;
+    }
+
+    VectorScale(*a->p, (vec_t) s, c);
+
+    if (!(args = Py_BuildValue("(fff)", c[0], c[1], c[2]))) {
+        return NULL;
+    }
+
+    result = PyObject_CallObject((PyObject *) &PyQ_Vector_type, args);
+    Py_DECREF(args);
+
+    return result;
+}
+
+static PyObject *V_negative(PyQ_Vector *a)
+{
+    vec3_t c;
+    PyObject *args, *result;
+
+    VectorCopy(*a->p, c);
+    VectorInverse(c);
+
+    if (!(args = Py_BuildValue("(fff)", c[0], c[1], c[2]))) {
+        return NULL;
+    }
+
+    result = PyObject_CallObject((PyObject *) &PyQ_Vector_type, args);
+    Py_DECREF(args);
+
+    return result;
+}
+
 static PyMethodDef V_methods[] = {
     { NULL },
 };
@@ -169,6 +255,45 @@ static PyGetSetDef V_getset[] = {
     { NULL },
 };
 
+static PyNumberMethods V_as_number = {
+    (binaryfunc) V_add,                         // nb_add
+    (binaryfunc) V_subtract,                    // nb_subtract
+    (binaryfunc) V_multiply,                    // nb_multiply
+    NULL,                                       // nb_remainder
+    NULL,                                       // nb_divmod
+    NULL,                                       // nb_power
+    (unaryfunc) V_negative,                     // nb_negative
+    NULL,                                       // nb_positive
+    NULL,                                       // nb_absolute
+    NULL,                                       // nb_bool
+    NULL,                                       // nb_invert
+    NULL,                                       // nb_lshift
+    NULL,                                       // nb_rshift
+    NULL,                                       // nb_and
+    NULL,                                       // nb_xor
+    NULL,                                       // nb_or
+    NULL,                                       // nb_int
+    NULL,                                       // nb_reserved
+    NULL,                                       // nb_float
+    NULL,                                       // nb_inplace_add
+    NULL,                                       // nb_inplace_subtract
+    NULL,                                       // nb_inplace_multiply
+    NULL,                                       // nb_inplace_remainder
+    NULL,                                       // nb_inplace_power
+    NULL,                                       // nb_inplace_lshift
+    NULL,                                       // nb_inplace_rshift
+    NULL,                                       // nb_inplace_and
+    NULL,                                       // nb_inplace_xor
+    NULL,                                       // nb_inplace_or
+    NULL,                                       // nb_floor_divide
+    NULL,                                       // nb_true_divide
+    NULL,                                       // nb_inplace_floor_divide
+    NULL,                                       // nb_inplace_true_divide
+    NULL,                                       // nb_index
+    NULL,                                       // nb_matrix_multiply
+    NULL,                                       // nb_inplace_matrix_multiply
+};
+
 PyTypeObject PyQ_Vector_type = {
     PyVarObject_HEAD_INIT(NULL, 0)
     "quake.Vector",                             // tp_name
@@ -180,7 +305,7 @@ PyTypeObject PyQ_Vector_type = {
     NULL,                                       // tp_setattr
     NULL,                                       // tp_as_async
     (reprfunc) V_repr,                          // tp_repr
-    NULL,                                       // tp_as_number
+    &V_as_number,                               // tp_as_number
     NULL,                                       // tp_as_sequence
     NULL,                                       // tp_as_mapping
     NULL,                                       // tp_hash
@@ -494,11 +619,16 @@ static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
     do { \
         edict_t *edict; \
         PyObject *args; \
+        PyObject *result = NULL; \
         if (!(edict = GetEdict(self))) { \
             return NULL; \
         } \
         args = Py_BuildValue("(n)", &edict->field); \
-        return PyObject_CallObject((PyObject *) &PyQ_Vector_type, args); \
+        if (args) { \
+            result = PyObject_CallObject((PyObject *) &PyQ_Vector_type, args); \
+        } \
+        Py_XDECREF(args); \
+        return result; \
     } while (0)
 
 /**
