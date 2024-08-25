@@ -15,9 +15,9 @@ typedef struct {
     vec3_t v;
     vec3_t *p;
     char reprbuf[32];
-} PyQ_Vector;
+} PyQ_vec;
 
-extern PyTypeObject PyQ_Vector_type;
+extern PyTypeObject PyQ_vec_type;
 
 //------------------------------------------------------------------------------
 

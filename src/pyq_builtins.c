@@ -20,14 +20,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 
 //-------------------------------------------------------------------------------
-// quake.Vector class
+// quake.vec class
 
 /**
- * quake.Vector.__new__
+ * quake.vec.__new__
  */
-static PyObject *V_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+static PyObject *PyQ_vec_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
-    PyQ_Vector *self = (PyQ_Vector *) type->tp_alloc(type, 0);
+    PyQ_vec *self = (PyQ_vec *) type->tp_alloc(type, 0);
 
     if (self) {
         self->v[0] = 0.f;
@@ -41,9 +41,9 @@ static PyObject *V_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 }
 
 /**
- * quake.Vector.__init__
+ * quake.vec.__init__
  */
-static int V_init(PyQ_Vector *self, PyObject *args, PyObject *kwds)
+static int PyQ_vec_init(PyQ_vec *self, PyObject *args, PyObject *kwds)
 {
     Py_ssize_t p;
     float x, y, z;
@@ -69,17 +69,17 @@ static int V_init(PyQ_Vector *self, PyObject *args, PyObject *kwds)
 }
 
 /**
- * quake.Vector.__dealloc__
+ * quake.vec.__dealloc__
  */
-static void V_dealloc(PyQ_Vector *self)
+static void PyQ_vec_dealloc(PyQ_vec *self)
 {
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
 /**
- * quake.Vector.__repr__
+ * quake.vec.__repr__
  */
-static PyObject *V_repr(PyQ_Vector *self)
+static PyObject *PyQ_vec_repr(PyQ_vec *self)
 {
     snprintf(self->reprbuf, sizeof(self->reprbuf), "(%5.1f %5.1f %5.1f)",
              (*self->p)[0], (*self->p)[1], (*self->p)[2]);
@@ -88,9 +88,9 @@ static PyObject *V_repr(PyQ_Vector *self)
 }
 
 /**
- * quake.Vector.__richcmp__
+ * quake.vec.__richcmp__
  */
-static PyObject *V_richcmp(PyQ_Vector *a, PyQ_Vector *b, int op)
+static PyObject *PyQ_vec_richcmp(PyQ_vec *a, PyQ_vec *b, int op)
 {
     if (op == Py_EQ) {
         if (VectorCompare((*a->p), (*b->p))) {
@@ -103,12 +103,18 @@ static PyObject *V_richcmp(PyQ_Vector *a, PyQ_Vector *b, int op)
     Py_RETURN_NOTIMPLEMENTED;
 }
 
-static PyObject *V_getx(PyQ_Vector *self, void *closure)
+/**
+ * quake.vec.x: getter
+ */
+static PyObject *PyQ_vec_getx(PyQ_vec *self, void *closure)
 {
     return Py_BuildValue("f", (*self->p)[0]);
 }
 
-static int V_setx(PyQ_Vector *self, PyObject *value, void *closure)
+/**
+ * quake.vec.x: setter
+ */
+static int PyQ_vec_setx(PyQ_vec *self, PyObject *value, void *closure)
 {
     double d = PyFloat_AsDouble(value);
 
@@ -120,12 +126,18 @@ static int V_setx(PyQ_Vector *self, PyObject *value, void *closure)
     return 0;
 }
 
-static PyObject *V_gety(PyQ_Vector *self, void *closure)
+/**
+ * quake.vec.y: getter
+ */
+static PyObject *PyQ_vec_gety(PyQ_vec *self, void *closure)
 {
     return Py_BuildValue("f", (*self->p)[1]);
 }
 
-static int V_sety(PyQ_Vector *self, PyObject *value, void *closure)
+/**
+ * quake.vec.y: setter
+ */
+static int PyQ_vec_sety(PyQ_vec *self, PyObject *value, void *closure)
 {
     double d = PyFloat_AsDouble(value);
 
@@ -137,12 +149,18 @@ static int V_sety(PyQ_Vector *self, PyObject *value, void *closure)
     return 0;
 }
 
-static PyObject *V_getz(PyQ_Vector *self, void *closure)
+/**
+ * quake.vec.z: getter
+ */
+static PyObject *PyQ_vec_getz(PyQ_vec *self, void *closure)
 {
     return Py_BuildValue("f", (*self->p)[2]);
 }
 
-static int V_setz(PyQ_Vector *self, PyObject *value, void *closure)
+/**
+ * quake.vec.z: setter
+ */
+static int PyQ_vec_setz(PyQ_vec *self, PyObject *value, void *closure)
 {
     double d = PyFloat_AsDouble(value);
 
@@ -154,12 +172,15 @@ static int V_setz(PyQ_Vector *self, PyObject *value, void *closure)
     return 0;
 }
 
-static PyObject *V_add(PyQ_Vector *a, PyQ_Vector *b)
+/**
+ * quake.vec.__add__
+ */
+static PyObject *PyQ_vec_add(PyQ_vec *a, PyQ_vec *b)
 {
     vec3_t c;
     PyObject *args, *result;
 
-    if (!PyObject_TypeCheck(b, &PyQ_Vector_type)) {
+    if (!PyObject_TypeCheck(b, &PyQ_vec_type)) {
         PyErr_SetString(PyExc_TypeError, "second operand is not a Vector");
         return NULL;
     }
@@ -170,18 +191,21 @@ static PyObject *V_add(PyQ_Vector *a, PyQ_Vector *b)
         return NULL;
     }
 
-    result = PyObject_CallObject((PyObject *) &PyQ_Vector_type, args);
+    result = PyObject_CallObject((PyObject *) &PyQ_vec_type, args);
     Py_DECREF(args);
 
     return result;
 }
 
-static PyObject *V_subtract(PyQ_Vector *a, PyQ_Vector *b)
+/**
+ * quake.vec.__sub__
+ */
+static PyObject *PyQ_vec_sub(PyQ_vec *a, PyQ_vec *b)
 {
     vec3_t c;
     PyObject *args, *result;
 
-    if (!PyObject_TypeCheck(b, &PyQ_Vector_type)) {
+    if (!PyObject_TypeCheck(b, &PyQ_vec_type)) {
         PyErr_SetString(PyExc_TypeError, "second operand is not a Vector");
         return NULL;
     }
@@ -192,13 +216,16 @@ static PyObject *V_subtract(PyQ_Vector *a, PyQ_Vector *b)
         return NULL;
     }
 
-    result = PyObject_CallObject((PyObject *) &PyQ_Vector_type, args);
+    result = PyObject_CallObject((PyObject *) &PyQ_vec_type, args);
     Py_DECREF(args);
 
     return result;
 }
 
-static PyObject *V_multiply(PyQ_Vector *a, PyObject *b)
+/**
+ * quake.vec.__mul__
+ */
+static PyObject *PyQ_vec_mul(PyQ_vec *a, PyObject *b)
 {
     vec3_t c;
     double s;
@@ -216,13 +243,16 @@ static PyObject *V_multiply(PyQ_Vector *a, PyObject *b)
         return NULL;
     }
 
-    result = PyObject_CallObject((PyObject *) &PyQ_Vector_type, args);
+    result = PyObject_CallObject((PyObject *) &PyQ_vec_type, args);
     Py_DECREF(args);
 
     return result;
 }
 
-static PyObject *V_negative(PyQ_Vector *a)
+/**
+ * quake.vec.__neg__
+ */
+static PyObject *PyQ_vec_neg(PyQ_vec *a)
 {
     vec3_t c;
     PyObject *args, *result;
@@ -234,35 +264,27 @@ static PyObject *V_negative(PyQ_Vector *a)
         return NULL;
     }
 
-    result = PyObject_CallObject((PyObject *) &PyQ_Vector_type, args);
+    result = PyObject_CallObject((PyObject *) &PyQ_vec_type, args);
     Py_DECREF(args);
 
     return result;
 }
 
-static PyMethodDef V_methods[] = {
+static PyGetSetDef PyQ_vec_getset[] = {
+    { "x", (getter) PyQ_vec_getx, (setter) PyQ_vec_setx },
+    { "y", (getter) PyQ_vec_gety, (setter) PyQ_vec_sety },
+    { "z", (getter) PyQ_vec_getz, (setter) PyQ_vec_setz },
     { NULL },
 };
 
-static PyMemberDef V_members[] = {
-    { NULL },
-};
-
-static PyGetSetDef V_getset[] = {
-    { "x", (getter) V_getx, (setter) V_setx },
-    { "y", (getter) V_gety, (setter) V_sety },
-    { "z", (getter) V_getz, (setter) V_setz },
-    { NULL },
-};
-
-static PyNumberMethods V_as_number = {
-    (binaryfunc) V_add,                         // nb_add
-    (binaryfunc) V_subtract,                    // nb_subtract
-    (binaryfunc) V_multiply,                    // nb_multiply
+static PyNumberMethods PyQ_vec_number_methods = {
+    (binaryfunc) PyQ_vec_add,                   // nb_add
+    (binaryfunc) PyQ_vec_sub,                   // nb_subtract
+    (binaryfunc) PyQ_vec_mul,                   // nb_multiply
     NULL,                                       // nb_remainder
     NULL,                                       // nb_divmod
     NULL,                                       // nb_power
-    (unaryfunc) V_negative,                     // nb_negative
+    (unaryfunc) PyQ_vec_neg,                    // nb_negative
     NULL,                                       // nb_positive
     NULL,                                       // nb_absolute
     NULL,                                       // nb_bool
@@ -294,18 +316,18 @@ static PyNumberMethods V_as_number = {
     NULL,                                       // nb_inplace_matrix_multiply
 };
 
-PyTypeObject PyQ_Vector_type = {
+PyTypeObject PyQ_vec_type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "quake.Vector",                             // tp_name
-    sizeof(PyQ_Vector),                         // tp_basicsize
+    "quake.vec",                                // tp_name
+    sizeof(PyQ_vec),                            // tp_basicsize
     0,                                          // tp_itemsize
-    (destructor) V_dealloc,                     // tp_dealloc
+    (destructor) PyQ_vec_dealloc,               // tp_dealloc
     0,                                          // tp_vectorcall_offset
     NULL,                                       // tp_getattr
     NULL,                                       // tp_setattr
     NULL,                                       // tp_as_async
-    (reprfunc) V_repr,                          // tp_repr
-    &V_as_number,                               // tp_as_number
+    (reprfunc) PyQ_vec_repr,                    // tp_repr
+    &PyQ_vec_number_methods,                    // tp_as_number
     NULL,                                       // tp_as_sequence
     NULL,                                       // tp_as_mapping
     NULL,                                       // tp_hash
@@ -318,21 +340,21 @@ PyTypeObject PyQ_Vector_type = {
     PyDoc_STR("Quake Vector"),                  // tp_doc
     NULL,                                       // tp_traverse
     NULL,                                       // tp_clear
-    (richcmpfunc) V_richcmp,                    // tp_richcompare
+    (richcmpfunc) PyQ_vec_richcmp,              // tp_richcompare
     0,                                          // tp_weaklistoffset
     NULL,                                       // tp_iter
     NULL,                                       // tp_iternext
-    V_methods,                                  // tp_methods
-    V_members,                                  // tp_members
-    V_getset,                                   // tp_getset
+    NULL,                                       // tp_methods
+    NULL,                                       // tp_members
+    PyQ_vec_getset,                             // tp_getset
     NULL,                                       // tp_base
     NULL,                                       // tp_dict
     NULL,                                       // tp_descr_get
     NULL,                                       // tp_descr_set
     0,                                          // tp_dictoffset
-    (initproc) V_init,                          // tp_init
+    (initproc) PyQ_vec_init,                    // tp_init
     NULL,                                       // tp_alloc
-    V_new,                                      // tp_new
+    PyQ_vec_new,                                // tp_new
     NULL,                                       // tp_free
     NULL,                                       // tp_is_gc
     NULL,                                       // tp_bases
@@ -478,13 +500,13 @@ static PyObject *E_richcmp(PyQ_Entity *a, PyQ_Entity *b, int op)
 static PyObject *E_setorigin(PyQ_Entity *self, PyObject *args)
 {
     edict_t *edict;
-    PyQ_Vector *vec;
+    PyQ_vec *vec;
 
     if (!(edict = GetEdict(self))) {
         return NULL;
     }
 
-    if (!PyArg_ParseTuple(args, "O!", &PyQ_Vector_type, &vec)) {
+    if (!PyArg_ParseTuple(args, "O!", &PyQ_vec_type, &vec)) {
         return NULL;
     }
 
@@ -537,14 +559,14 @@ static PyObject *E_setmodel(PyQ_Entity *self, PyObject *args)
 static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
 {
     edict_t *edict;
-    PyQ_Vector *mins;
-    PyQ_Vector *maxs;
+    PyQ_vec *mins;
+    PyQ_vec *maxs;
 
     if (!(edict = GetEdict(self))) {
         return NULL;
     }
 
-    if (!PyArg_ParseTuple(args, "O!O!", &PyQ_Vector_type, &mins, &PyQ_Vector_type, &maxs)) {
+    if (!PyArg_ParseTuple(args, "O!O!", &PyQ_vec_type, &mins, &PyQ_vec_type, &maxs)) {
         return NULL;
     }
 
@@ -625,7 +647,7 @@ static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
         } \
         args = Py_BuildValue("(n)", &edict->field); \
         if (args) { \
-            result = PyObject_CallObject((PyObject *) &PyQ_Vector_type, args); \
+            result = PyObject_CallObject((PyObject *) &PyQ_vec_type, args); \
         } \
         Py_XDECREF(args); \
         return result; \
@@ -640,12 +662,12 @@ static PyObject *E_setsize(PyQ_Entity *self, PyObject *args)
         if (!(edict = GetEdict(self))) { \
             return -1; \
         } \
-        if (!PyObject_TypeCheck(value, &PyQ_Vector_type)) { \
+        if (!PyObject_TypeCheck(value, &PyQ_vec_type)) { \
             return -1; \
         } \
-        edict->field[0] = (*((PyQ_Vector *) value)->p)[0]; \
-        edict->field[1] = (*((PyQ_Vector *) value)->p)[1]; \
-        edict->field[2] = (*((PyQ_Vector *) value)->p)[2]; \
+        edict->field[0] = (*((PyQ_vec *) value)->p)[0]; \
+        edict->field[1] = (*((PyQ_vec *) value)->p)[1]; \
+        edict->field[2] = (*((PyQ_vec *) value)->p)[2]; \
         return 0; \
     } while (0)
 
@@ -1910,7 +1932,7 @@ PyObject *PyQ_quake_init(void)
 {
     PyObject *module;
 
-    if (PyType_Ready(&PyQ_Vector_type) == -1) {
+    if (PyType_Ready(&PyQ_vec_type) == -1) {
         return NULL;
     }
 
@@ -1924,7 +1946,7 @@ PyObject *PyQ_quake_init(void)
         return NULL;
     }
 
-    Py_INCREF(&PyQ_Vector_type);
+    Py_INCREF(&PyQ_vec_type);
     Py_INCREF(&PyQ_Entity_type);
 
     struct PyQ_namevalue constant_list[] = {
@@ -1998,7 +2020,7 @@ PyObject *PyQ_quake_init(void)
         }
     }
 
-    if (PyModule_AddObject(module, "Vector", (PyObject *) &PyQ_Vector_type) == -1) {
+    if (PyModule_AddObject(module, "vec", (PyObject *) &PyQ_vec_type) == -1) {
         goto error;
     }
 
@@ -2010,7 +2032,7 @@ PyObject *PyQ_quake_init(void)
 
 error:
     Py_DECREF(&PyQ_Entity_type);
-    Py_DECREF(&PyQ_Vector_type);
+    Py_DECREF(&PyQ_vec_type);
     Py_DECREF(module);
 
     return NULL;
