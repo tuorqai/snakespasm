@@ -1900,6 +1900,12 @@ static PyModuleDef quake_module = {
     NULL,                           // m_free
 };
 
+struct PyQ_namevalue
+{
+    char const *name;
+    int value;
+};
+
 PyObject *PyQ_quake_init(void)
 {
     PyObject *module;
@@ -1914,86 +1920,98 @@ PyObject *PyQ_quake_init(void)
 
     module = PyModule_Create(&quake_module);
 
-    if (module) {
-        Py_INCREF(&PyQ_Vector_type);
-        Py_INCREF(&PyQ_Entity_type);
-
-        PyModule_AddIntConstant(module, "IT_AXE", IT_AXE);
-        PyModule_AddIntConstant(module, "IT_SHOTGUN", IT_SHOTGUN);
-        PyModule_AddIntConstant(module, "IT_SUPER_SHOTGUN", IT_SUPER_SHOTGUN);
-        PyModule_AddIntConstant(module, "IT_NAILGUN", IT_NAILGUN);
-        PyModule_AddIntConstant(module, "IT_SUPER_NAILGUN", IT_SUPER_NAILGUN);
-        PyModule_AddIntConstant(module, "IT_GRENADE_LAUNCHER", IT_GRENADE_LAUNCHER);
-        PyModule_AddIntConstant(module, "IT_ROCKET_LAUNCHER", IT_ROCKET_LAUNCHER);
-        PyModule_AddIntConstant(module, "IT_LIGHTNING", IT_LIGHTNING);
-        PyModule_AddIntConstant(module, "IT_SUPER_LIGHTNING", IT_SUPER_LIGHTNING);
-        PyModule_AddIntConstant(module, "IT_SHELLS", IT_SHELLS);
-        PyModule_AddIntConstant(module, "IT_NAILS", IT_NAILS);
-        PyModule_AddIntConstant(module, "IT_ROCKETS", IT_ROCKETS);
-        PyModule_AddIntConstant(module, "IT_CELLS", IT_CELLS);
-        PyModule_AddIntConstant(module, "IT_AXE", IT_AXE);
-        PyModule_AddIntConstant(module, "IT_ARMOR1", IT_ARMOR1);
-        PyModule_AddIntConstant(module, "IT_ARMOR2", IT_ARMOR2);
-        PyModule_AddIntConstant(module, "IT_ARMOR3", IT_ARMOR3);
-        PyModule_AddIntConstant(module, "IT_SUPERHEALTH", IT_SUPERHEALTH);
-        PyModule_AddIntConstant(module, "IT_KEY1", IT_KEY1);
-        PyModule_AddIntConstant(module, "IT_KEY2", IT_KEY2);
-        PyModule_AddIntConstant(module, "IT_INVISIBILITY", IT_INVISIBILITY);
-        PyModule_AddIntConstant(module, "IT_INVULNERABILITY", IT_INVULNERABILITY);
-        PyModule_AddIntConstant(module, "IT_SUIT", IT_SUIT);
-        PyModule_AddIntConstant(module, "IT_QUAD", IT_QUAD);
-        PyModule_AddIntConstant(module, "IT_SIGIL1", IT_SIGIL1);
-        PyModule_AddIntConstant(module, "IT_SIGIL2", IT_SIGIL2);
-        PyModule_AddIntConstant(module, "IT_SIGIL3", IT_SIGIL3);
-        PyModule_AddIntConstant(module, "IT_SIGIL4", IT_SIGIL4);
-
-        PyModule_AddIntConstant(module, "MOVETYPE_NONE", MOVETYPE_NONE);
-        PyModule_AddIntConstant(module, "MOVETYPE_ANGLENOCLIP", MOVETYPE_ANGLENOCLIP);
-        PyModule_AddIntConstant(module, "MOVETYPE_ANGLECLIP", MOVETYPE_ANGLECLIP);
-        PyModule_AddIntConstant(module, "MOVETYPE_WALK", MOVETYPE_WALK);
-        PyModule_AddIntConstant(module, "MOVETYPE_STEP", MOVETYPE_STEP);
-        PyModule_AddIntConstant(module, "MOVETYPE_FLY", MOVETYPE_FLY);
-        PyModule_AddIntConstant(module, "MOVETYPE_TOSS", MOVETYPE_TOSS);
-        PyModule_AddIntConstant(module, "MOVETYPE_PUSH", MOVETYPE_PUSH);
-        PyModule_AddIntConstant(module, "MOVETYPE_NOCLIP", MOVETYPE_NOCLIP);
-        PyModule_AddIntConstant(module, "MOVETYPE_FLYMISSILE", MOVETYPE_FLYMISSILE);
-        PyModule_AddIntConstant(module, "MOVETYPE_BOUNCE", MOVETYPE_BOUNCE);
-        PyModule_AddIntConstant(module, "MOVETYPE_GIB", MOVETYPE_GIB);
-
-        PyModule_AddIntConstant(module, "SOLID_NOT", SOLID_NOT);
-        PyModule_AddIntConstant(module, "SOLID_TRIGGER", SOLID_TRIGGER);
-        PyModule_AddIntConstant(module, "SOLID_BBOX", SOLID_BBOX);
-        PyModule_AddIntConstant(module, "SOLID_SLIDEBOX", SOLID_SLIDEBOX);
-        PyModule_AddIntConstant(module, "SOLID_BSP", SOLID_BSP);
-
-        PyModule_AddIntConstant(module, "DEAD_NO", DEAD_NO);
-        PyModule_AddIntConstant(module, "DEAD_DYING", DEAD_DYING);
-        PyModule_AddIntConstant(module, "DEAD_DEAD", DEAD_DEAD);
-
-        PyModule_AddIntConstant(module, "FL_FLY", FL_FLY);
-        PyModule_AddIntConstant(module, "FL_SWIM", FL_SWIM);
-        PyModule_AddIntConstant(module, "FL_CONVEYOR", FL_CONVEYOR);
-        PyModule_AddIntConstant(module, "FL_CLIENT", FL_CLIENT);
-        PyModule_AddIntConstant(module, "FL_INWATER", FL_INWATER);
-        PyModule_AddIntConstant(module, "FL_MONSTER", FL_MONSTER);
-        PyModule_AddIntConstant(module, "FL_GODMODE", FL_GODMODE);
-        PyModule_AddIntConstant(module, "FL_NOTARGET", FL_NOTARGET);
-        PyModule_AddIntConstant(module, "FL_ITEM", FL_ITEM);
-        PyModule_AddIntConstant(module, "FL_ONGROUND", FL_ONGROUND);
-        PyModule_AddIntConstant(module, "FL_PARTIALGROUND", FL_PARTIALGROUND);
-        PyModule_AddIntConstant(module, "FL_WATERJUMP", FL_WATERJUMP);
-        PyModule_AddIntConstant(module, "FL_JUMPRELEASED", FL_JUMPRELEASED);
-
-        if (PyModule_AddObject(module, "Vector", (PyObject *) &PyQ_Vector_type) == 0) {
-            if (PyModule_AddObject(module, "Entity", (PyObject *) &PyQ_Entity_type) == 0) {
-                return module;
-            }
-        }
-
-        Py_DECREF(&PyQ_Entity_type);
-        Py_DECREF(&PyQ_Vector_type);
-        Py_DECREF(module);
+    if (!module) {
+        return NULL;
     }
+
+    Py_INCREF(&PyQ_Vector_type);
+    Py_INCREF(&PyQ_Entity_type);
+
+    struct PyQ_namevalue constant_list[] = {
+        { "IT_AXE", IT_AXE },
+        { "IT_SHOTGUN", IT_SHOTGUN },
+        { "IT_SUPER_SHOTGUN", IT_SUPER_SHOTGUN },
+        { "IT_NAILGUN", IT_NAILGUN },
+        { "IT_SUPER_NAILGUN", IT_SUPER_NAILGUN },
+        { "IT_GRENADE_LAUNCHER", IT_GRENADE_LAUNCHER },
+        { "IT_ROCKET_LAUNCHER", IT_ROCKET_LAUNCHER },
+        { "IT_LIGHTNING", IT_LIGHTNING },
+        { "IT_SUPER_LIGHTNING", IT_SUPER_LIGHTNING },
+        { "IT_SHELLS", IT_SHELLS },
+        { "IT_NAILS", IT_NAILS },
+        { "IT_ROCKETS", IT_ROCKETS },
+        { "IT_CELLS", IT_CELLS },
+        { "IT_AXE", IT_AXE },
+        { "IT_ARMOR1", IT_ARMOR1 },
+        { "IT_ARMOR2", IT_ARMOR2 },
+        { "IT_ARMOR3", IT_ARMOR3 },
+        { "IT_SUPERHEALTH", IT_SUPERHEALTH },
+        { "IT_KEY1", IT_KEY1 },
+        { "IT_KEY2", IT_KEY2 },
+        { "IT_INVISIBILITY", IT_INVISIBILITY },
+        { "IT_INVULNERABILITY", IT_INVULNERABILITY },
+        { "IT_SUIT", IT_SUIT },
+        { "IT_QUAD", IT_QUAD },
+        { "IT_SIGIL1", IT_SIGIL1 },
+        { "IT_SIGIL2", IT_SIGIL2 },
+        { "IT_SIGIL3", IT_SIGIL3 },
+        { "IT_SIGIL4", IT_SIGIL4 },
+        { "MOVETYPE_NONE", MOVETYPE_NONE },
+        { "MOVETYPE_ANGLENOCLIP", MOVETYPE_ANGLENOCLIP },
+        { "MOVETYPE_ANGLECLIP", MOVETYPE_ANGLECLIP },
+        { "MOVETYPE_WALK", MOVETYPE_WALK },
+        { "MOVETYPE_STEP", MOVETYPE_STEP },
+        { "MOVETYPE_FLY", MOVETYPE_FLY },
+        { "MOVETYPE_TOSS", MOVETYPE_TOSS },
+        { "MOVETYPE_PUSH", MOVETYPE_PUSH },
+        { "MOVETYPE_NOCLIP", MOVETYPE_NOCLIP },
+        { "MOVETYPE_FLYMISSILE", MOVETYPE_FLYMISSILE },
+        { "MOVETYPE_BOUNCE", MOVETYPE_BOUNCE },
+        { "MOVETYPE_GIB", MOVETYPE_GIB },
+        { "SOLID_NOT", SOLID_NOT },
+        { "SOLID_TRIGGER", SOLID_TRIGGER },
+        { "SOLID_BBOX", SOLID_BBOX },
+        { "SOLID_SLIDEBOX", SOLID_SLIDEBOX },
+        { "SOLID_BSP", SOLID_BSP },
+        { "DEAD_NO", DEAD_NO },
+        { "DEAD_DYING", DEAD_DYING },
+        { "DEAD_DEAD", DEAD_DEAD },
+        { "FL_FLY", FL_FLY },
+        { "FL_SWIM", FL_SWIM },
+        { "FL_CONVEYOR", FL_CONVEYOR },
+        { "FL_CLIENT", FL_CLIENT },
+        { "FL_INWATER", FL_INWATER },
+        { "FL_MONSTER", FL_MONSTER },
+        { "FL_GODMODE", FL_GODMODE },
+        { "FL_NOTARGET", FL_NOTARGET },
+        { "FL_ITEM", FL_ITEM },
+        { "FL_ONGROUND", FL_ONGROUND },
+        { "FL_PARTIALGROUND", FL_PARTIALGROUND },
+        { "FL_WATERJUMP", FL_WATERJUMP },
+        { "FL_JUMPRELEASED", FL_JUMPRELEASED },
+        { NULL },
+    };
+
+    for (struct PyQ_namevalue *c = constant_list; c->name != NULL; c++) {
+        if (PyModule_AddIntConstant(module, c->name, c->value) == -1) {
+            goto error;
+        }
+    }
+
+    if (PyModule_AddObject(module, "Vector", (PyObject *) &PyQ_Vector_type) == -1) {
+        goto error;
+    }
+
+    if (PyModule_AddObject(module, "Entity", (PyObject *) &PyQ_Entity_type) == -1) {
+        goto error;
+    }
+
+    return module;
+
+error:
+    Py_DECREF(&PyQ_Entity_type);
+    Py_DECREF(&PyQ_Vector_type);
+    Py_DECREF(module);
 
     return NULL;
 }
