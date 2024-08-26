@@ -1508,9 +1508,6 @@ void SV_SpawnServer (const char *server)
 	}
 	else sv.protocolflags = 0;
 
-// [tuorqai] tell to Python that the server is about to spawn
-	PyQ_PreServerSpawn ();
-
 // load progs to get entity field count
 	PR_LoadProgs ();
 
@@ -1528,6 +1525,9 @@ void SV_SpawnServer (const char *server)
 	sv.reliable_datagram.data = sv.reliable_datagram_buf;
 
 	SV_AddSignonBuffer ();
+
+// [tuorqai] tell to Python that the server is about to spawn
+	PyQ_PreServerSpawn ();
 
 // leave slots at start for clients only
 	sv.num_edicts = svs.maxclients+1;
