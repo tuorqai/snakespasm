@@ -373,7 +373,45 @@ PyTypeObject PyQ_vec_type = {
 
 typedef struct {
     PyObject_HEAD
+    int servernumber;
+    int index;
 } PyQ__sv_edict;
+
+/**
+ * PyQ__sv_edict -> edict_t
+ */
+static edict_t *PyQ__sv_edict_get(PyQ__sv_edict *self)
+{
+    // check if server is inactive and not being spawned
+    if (!sv.active && !PyQ_serverloading) {
+        PyErr_SetString(PyExc_ReferenceError, "server is not running");
+        return NULL;
+    }
+
+    // worldspawn (0 index) is valid between levels
+    if (self->index == 0) {
+        return sv.edicts;
+    }
+
+    // client entity is also valid
+    if (self->index >= 1 && self->index <= svs.maxclients) {
+        return EDICT_NUM(self->index);
+    }
+
+    // for anything else make basic checks
+
+    if (self->servernumber != PyQ_servernumber) {
+        PyErr_SetString(PyExc_ReferenceError, "edict was created in another server");
+        return NULL;
+    }
+
+    if (self->index < 0 || self->index >= sv.num_edicts) {
+        PyErr_SetString(PyExc_ReferenceError, "invalid edict");
+        return NULL;
+    }
+
+    return EDICT_NUM(self->index);
+}
 
 /**
  * quake._sv.edict.__new__
@@ -385,6 +423,9 @@ static PyQ__sv_edict *PyQ__sv_edict_new(PyTypeObject *type, PyObject *args, PyOb
     if (!self) {
         return NULL;
     }
+
+    self->servernumber = PyQ_servernumber;
+    self->index = 0;
 
     return self;
 }
@@ -411,7 +452,59 @@ static void PyQ__sv_edict_dealloc(PyQ__sv_edict *self)
  */
 static PyObject *PyQ__sv_edict_repr(PyQ__sv_edict *self)
 {
-    return PyUnicode_FromString("edict");
+    edict_t *edict = PyQ__sv_edict_get(self);
+
+    if (!edict) {
+        PyErr_Clear();
+        return PyUnicode_FromFormat("<invalid entity reference at %p>", self);
+    }
+
+    return PyUnicode_FromFormat("<edict #%d, classname \"%s\">",
+                                self->index, PR_GetString(edict->v.classname));
+}
+
+/**
+ * quake._sv.edict.__hash__
+ */
+static Py_hash_t PyQ__sv_edict_hash(PyQ__sv_edict *self)
+{
+    edict_t *edict = PyQ__sv_edict_get(self);
+
+    if (!edict) {
+        return -1;
+    }
+
+    return NUM_FOR_EDICT(edict);
+}
+
+/**
+ * quake._sv.edict.__richcmp__
+ */
+static PyObject *PyQ__sv_edict_richcmp(PyQ__sv_edict *a, PyQ__sv_edict *b, int op)
+{
+    edict_t *_a, *_b;
+
+    _a = PyQ__sv_edict_get(a);
+
+    if (!_a) {
+        return NULL;
+    }
+
+    _b = PyQ__sv_edict_get(b);
+
+    if (!_b) {
+        return NULL;
+    }
+
+    if (op == Py_EQ) {
+        if (_a == _b) {
+            Py_RETURN_TRUE;
+        } else {
+            Py_RETURN_FALSE;
+        }
+    }
+
+    Py_RETURN_NOTIMPLEMENTED;
 }
 
 static PyMethodDef PyQ__sv_edict_methods[] = {
@@ -436,7 +529,7 @@ static PyTypeObject PyQ__sv_edict_type = {
     NULL,                                       // tp_as_number
     NULL,                                       // tp_as_sequence
     NULL,                                       // tp_as_mapping
-    NULL,                                       // tp_hash
+    (hashfunc) PyQ__sv_edict_hash,              // tp_hash
     NULL,                                       // tp_call
     NULL,                                       // tp_str
     NULL,                                       // tp_getattro
@@ -446,7 +539,7 @@ static PyTypeObject PyQ__sv_edict_type = {
     NULL,                                       // tp_doc
     NULL,                                       // tp_traverse
     NULL,                                       // tp_clear
-    NULL,                                       // tp_richcompare
+    (richcmpfunc) PyQ__sv_edict_richcmp,        // tp_richcompare
     0,                                          // tp_weaklistoffset
     NULL,                                       // tp_iter
     NULL,                                       // tp_iternext
@@ -520,7 +613,7 @@ static PyObject *PyQ__sv_getedict(PyObject *self, void *closure)
 {
     // I'm not really sure if this is a correct way to put
     // a class inside another class.
-    return &PyQ__sv_edict_type;
+    return (PyObject *) &PyQ__sv_edict_type;
 }
 
 /**
@@ -1920,7 +2013,7 @@ static PyObject *PyQ_normalize(PyObject *self, PyObject *args)
         result->v[2] = z / len;
     }
 
-    return result;
+    return (PyObject *) result;
 }
 
 /**
@@ -2025,7 +2118,7 @@ static PyObject *PyQ_vectoangles(PyObject *self, PyObject *args)
     result->v[1] = yaw;
     result->v[2] = 0.f;
 
-    return result;
+    return (PyObject *) result;
 }
 
 /**

@@ -49,6 +49,7 @@ struct PyQ_callback
 //------------------------------------------------------------------------------
 
 int                 PyQ_servernumber;
+qboolean            PyQ_serverloading;
 PyQ_StringStorage  *PyQ_string_storage;
 int                 PyQ_string_storage_size;
 
@@ -480,11 +481,12 @@ void PyQ_Shutdown(void)
 /**
  * Server is spawning.
  */
-void PyQ_ServerSpawn(void)
+void PyQ_PreServerSpawn(void)
 {
     PyQ_StringStorage *new_string_storage;
 
     PyQ_servernumber++;
+    PyQ_serverloading = true;
 
     if (PyQ_string_storage_size < sv.max_edicts) {
         new_string_storage = realloc(PyQ_string_storage, sizeof(*PyQ_string_storage) * sv.max_edicts);
@@ -496,6 +498,14 @@ void PyQ_ServerSpawn(void)
         PyQ_string_storage = new_string_storage;
         PyQ_string_storage_size = sv.max_edicts;
     }
+}
+
+/**
+* Server is spawned.
+*/
+void PyQ_PostServerSpawn(void)
+{
+    PyQ_serverloading = false;
 }
 
 //------------------------------------------------------------------------------

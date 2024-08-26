@@ -24,6 +24,7 @@ extern PyTypeObject PyQ_vec_type;
 #define PyQ_ENTITY_STRLEN           64
 
 extern int PyQ_servernumber;
+extern qboolean PyQ_serverloading; // check only if sv.active == false
 
 typedef struct {
     struct {
@@ -55,7 +56,8 @@ extern PyTypeObject PyQ_Entity_type;
 
 void PyQ_Init(void);
 void PyQ_Shutdown(void);
-void PyQ_ServerSpawn(void);
+void PyQ_PreServerSpawn(void);
+void PyQ_PostServerSpawn(void);
 int PyQ_RunBuffer(const char *buffer);
 
 PyObject *PyQ_quake_init(void);

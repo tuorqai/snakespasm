@@ -1509,7 +1509,7 @@ void SV_SpawnServer (const char *server)
 	else sv.protocolflags = 0;
 
 // [tuorqai] tell to Python that the server is about to spawn
-	PyQ_ServerSpawn ();
+	PyQ_PreServerSpawn ();
 
 // load progs to get entity field count
 	PR_LoadProgs ();
@@ -1617,6 +1617,9 @@ void SV_SpawnServer (const char *server)
 	for (i=0,host_client = svs.clients ; i<svs.maxclients ; i++, host_client++)
 		if (host_client->active)
 			SV_SendServerinfo (host_client);
+
+// [tuorqai] one more signal to Python
+	PyQ_PostServerSpawn ();
 
 	Con_DPrintf ("Server spawned.\n");
 }
