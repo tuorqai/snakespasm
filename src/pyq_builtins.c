@@ -559,26 +559,64 @@ static PyObject *PyQ__sv_edict_richcmp(PyQ__sv_edict *a, PyQ__sv_edict *b, int o
 
 #define PyQ__sv_edict_VECTOR_GETTER(field) \
     static PyObject *PyQ__sv_edict_get##field(PyQ__sv_edict *self, void *closure) { \
-        PyErr_SetString(PyExc_NotImplementedError, "under construction"); \
-        return NULL; \
+        edict_t *edict; \
+        PyQ_vec *vec; \
+        edict = PyQ__sv_edict_get(self); \
+        if (!edict) { \
+            return NULL; \
+        } \
+        vec = PyObject_New(PyQ_vec, &PyQ_vec_type); \
+        if (!vec) { \
+            return NULL; \
+        } \
+        vec->p = &edict->v.field; \
+        return (PyObject *) vec; \
     }
 
 #define PyQ__sv_edict_VECTOR_SETTER(field) \
     static int PyQ__sv_edict_set##field(PyQ__sv_edict *self, PyObject *value, void *closure) { \
-        PyErr_SetString(PyExc_NotImplementedError, "under construction"); \
-        return -1; \
+        edict_t *edict; \
+        PyQ_vec *vec; \
+        edict = PyQ__sv_edict_get(self); \
+        if (!edict) { \
+            return -1; \
+        } \
+        if (!PyObject_TypeCheck(value, &PyQ_vec_type)) { \
+            PyErr_SetString(PyExc_TypeError, "value must be vec"); \
+            return -1; \
+        } \
+        vec = (PyQ_vec *) value; \
+        edict->v.field[0] = *(vec->p)[0]; \
+        edict->v.field[1] = *(vec->p)[1]; \
+        edict->v.field[2] = *(vec->p)[2]; \
+        return 0; \
     }
 
 #define PyQ__sv_edict_STRING_GETTER(field) \
     static PyObject *PyQ__sv_edict_get##field(PyQ__sv_edict *self, void *closure) { \
-        PyErr_SetString(PyExc_NotImplementedError, "under construction"); \
-        return NULL; \
+        edict_t *edict = PyQ__sv_edict_get(self); \
+        if (!edict) { \
+            return NULL; \
+        } \
+        return PyUnicode_FromString(PR_GetString(edict->v.field)); \
     }
 
 #define PyQ__sv_edict_STRING_SETTER(field) \
     static int PyQ__sv_edict_set##field(PyQ__sv_edict *self, PyObject *value, void *closure) { \
-        PyErr_SetString(PyExc_NotImplementedError, "under construction"); \
-        return -1; \
+        edict_t *edict; \
+        PyObject *bytes; \
+        edict = PyQ__sv_edict_get(self); \
+        if (!edict) { \
+            return -1; \
+        } \
+        bytes = PyUnicode_AsUTF8String(value); \
+        if (!bytes) { \
+            return -1; \
+        } \
+        Q_strcpy(PyQ_string_storage[self->index].v.field, PyBytes_AsString(bytes)); \
+        edict->v.field = PR_SetEngineString(PyQ_string_storage[self->index].v.field); \
+        Py_DECREF(bytes); \
+        return 0; \
     }
 
 #define PyQ__sv_edict_ENTITY_GETTER(field) \
@@ -995,7 +1033,7 @@ static PyObject *PyQ__sv_getworld(PyObject *self, void *closure)
     world->servernumber = -1;
     world->index = 0;
 
-    return world;
+    return (PyObject *) world;
 }
 
 /**
