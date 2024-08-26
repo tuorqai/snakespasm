@@ -619,16 +619,42 @@ static PyObject *PyQ__sv_edict_richcmp(PyQ__sv_edict *a, PyQ__sv_edict *b, int o
         return 0; \
     }
 
+static PyTypeObject PyQ__sv_edict_type;
+
 #define PyQ__sv_edict_ENTITY_GETTER(field) \
     static PyObject *PyQ__sv_edict_get##field(PyQ__sv_edict *self, void *closure) { \
-        PyErr_SetString(PyExc_NotImplementedError, "under construction"); \
-        return NULL; \
+        edict_t *edict; \
+        PyQ__sv_edict *result; \
+        edict = PyQ__sv_edict_get(self); \
+        if (!edict) { \
+            return NULL; \
+        } \
+        result = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type); \
+        if (!result) { \
+            return NULL; \
+        } \
+        result->servernumber = PyQ_servernumber; \
+        result->index = edict->v.field; \
+        return (PyObject *) result; \
     }
 
 #define PyQ__sv_edict_ENTITY_SETTER(field) \
     static int PyQ__sv_edict_set##field(PyQ__sv_edict *self, PyObject *value, void *closure) { \
-        PyErr_SetString(PyExc_NotImplementedError, "under construction"); \
-        return -1; \
+        edict_t *selfedict, *valueedict; \
+        selfedict = PyQ__sv_edict_get(self); \
+        if (!selfedict) { \
+            return -1; \
+        } \
+        if (!PyObject_TypeCheck(value, &PyQ__sv_edict_type)) { \
+            PyErr_SetString(PyExc_TypeError, "value must be edict"); \
+            return -1; \
+        } \
+        valueedict = PyQ__sv_edict_get((PyQ__sv_edict *) value); \
+        if (!valueedict) { \
+            return -1; \
+        } \
+        selfedict->v.field = NUM_FOR_EDICT(valueedict); \
+        return 0; \
     }
 
 PyQ__sv_edict_NUMBER_GETTER(modelindex)
