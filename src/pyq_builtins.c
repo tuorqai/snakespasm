@@ -2134,14 +2134,6 @@ static PyObject *PyQ_localcmd(PyObject *self, PyObject *args)
 }
 
 /**
- * quake.time()
- */
-static PyObject *quake__time(PyObject *self, PyObject *args)
-{
-    return PyFloat_FromDouble(sv.time);
-}
-
-/**
  * quake.spawn() [#14 in Quakec]
  */
 static PyObject *quake__spawn(PyObject *self, PyObject *args)
@@ -2427,7 +2419,6 @@ static PyMethodDef quake_methods[] = {
     { "dprint",         (PyCFunction) PyQ_dprint,       METH_VARARGS | METH_KEYWORDS },
     { "cvar",           PyQ_cvar,                       METH_VARARGS },
     { "localcmd",       PyQ_localcmd,                   METH_VARARGS },
-    { "time",           quake__time,                    METH_NOARGS },
     { "bprint",         quake__bprint,                  METH_VARARGS },
     { "sprint",         quake__sprint,                  METH_VARARGS },
     { "centerprint",    quake__centerprint,             METH_VARARGS },
