@@ -369,6 +369,234 @@ PyTypeObject PyQ_vec_type = {
 };
 
 //-------------------------------------------------------------------------------
+// quake._sv.edict class
+
+typedef struct {
+    PyObject_HEAD
+} PyQ__sv_edict;
+
+/**
+ * quake._sv.edict.__new__
+ */
+static PyQ__sv_edict *PyQ__sv_edict_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyQ__sv_edict *self = (PyQ__sv_edict *) type->tp_alloc(type, 0);
+
+    if (!self) {
+        return NULL;
+    }
+
+    return self;
+}
+
+/**
+ * quake._sv.edict.__init__
+ */
+static int PyQ__sv_edict_init(PyQ__sv_edict *self, PyObject *args, PyObject *kwds)
+{
+    PyErr_SetString(PyExc_TypeError, "edict cannot be instantiated directly");
+    return -1;
+}
+
+/**
+ * quake._sv.edict.__dealloc__
+ */
+static void PyQ__sv_edict_dealloc(PyQ__sv_edict *self)
+{
+    Py_TYPE(self)->tp_free((PyObject *) self);
+}
+
+/**
+ * quake._sv.edict.__repr__
+ */
+static PyObject *PyQ__sv_edict_repr(PyQ__sv_edict *self)
+{
+    return PyUnicode_FromString("edict");
+}
+
+static PyMethodDef PyQ__sv_edict_methods[] = {
+    { NULL },
+};
+
+static PyGetSetDef PyQ__sv_edict_getset[] = {
+    { NULL },
+};
+
+static PyTypeObject PyQ__sv_edict_type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "quake._sv.edict",                          // tp_name
+    sizeof(PyQ__sv_edict),                      // tp_basicsize
+    0,                                          // tp_itemsize
+    (destructor) PyQ__sv_edict_dealloc,         // tp_dealloc
+    0,                                          // tp_vectorcall_offset
+    NULL,                                       // tp_getattr
+    NULL,                                       // tp_setattr
+    NULL,                                       // tp_as_async
+    (reprfunc) PyQ__sv_edict_repr,              // tp_repr
+    NULL,                                       // tp_as_number
+    NULL,                                       // tp_as_sequence
+    NULL,                                       // tp_as_mapping
+    NULL,                                       // tp_hash
+    NULL,                                       // tp_call
+    NULL,                                       // tp_str
+    NULL,                                       // tp_getattro
+    NULL,                                       // tp_setattro
+    NULL,                                       // tp_as_buffer
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,   // tp_flags
+    NULL,                                       // tp_doc
+    NULL,                                       // tp_traverse
+    NULL,                                       // tp_clear
+    NULL,                                       // tp_richcompare
+    0,                                          // tp_weaklistoffset
+    NULL,                                       // tp_iter
+    NULL,                                       // tp_iternext
+    PyQ__sv_edict_methods,                      // tp_methods
+    NULL,                                       // tp_members
+    PyQ__sv_edict_getset,                       // tp_getset
+    NULL,                                       // tp_base
+    NULL,                                       // tp_dict
+    NULL,                                       // tp_descr_get
+    NULL,                                       // tp_descr_set
+    0,                                          // tp_dictoffset
+    (initproc) PyQ__sv_edict_init,              // tp_init
+    NULL,                                       // tp_alloc
+    (newfunc) PyQ__sv_edict_new,                // tp_new
+    NULL,                                       // tp_free
+    NULL,                                       // tp_is_gc
+    NULL,                                       // tp_bases
+    NULL,                                       // tp_mro
+    NULL,                                       // tp_cache
+    NULL,                                       // tp_subclasses
+    NULL,                                       // tp_weaklist
+    NULL,                                       // tp_del
+    0,                                          // tp_version_tag
+    NULL,                                       // tp_finalize
+    NULL,                                       // tp_vectorcall
+};
+
+//-------------------------------------------------------------------------------
+// quake._sv class
+
+typedef struct {
+    PyObject_HEAD
+} PyQ__sv;
+
+/**
+ * quake._sv.__dealloc__
+ */
+static void PyQ__sv_dealloc(PyObject *self)
+{
+    Py_TYPE(self)->tp_free(self);
+}
+
+/**
+ * quake._sv.setorigin
+ */
+static PyObject *PyQ__sv_setorigin(PyObject *self, PyObject *args)
+{
+    Py_RETURN_NONE;
+}
+
+/**
+ * quake._sv.setmodel
+ */
+static PyObject *PyQ__sv_setmodel(PyObject *self, PyObject *args)
+{
+    Py_RETURN_NONE;
+}
+
+/**
+ * quake._sv.setsize
+ */
+static PyObject *PyQ__sv_setsize(PyObject *self, PyObject *args)
+{
+    Py_RETURN_NONE;
+}
+
+/**
+ * quake._sv.edict getter
+ */
+static PyObject *PyQ__sv_getedict(PyObject *self, void *closure)
+{
+    // I'm not really sure if this is a correct way to put
+    // a class inside another class.
+    return &PyQ__sv_edict_type;
+}
+
+/**
+ * quake._sv.time getter
+ */
+static PyObject *PyQ__sv_gettime(PyObject *self, void *closure)
+{
+    return PyFloat_FromDouble(sv.time);
+}
+
+static PyMethodDef PyQ__sv_methods[] = {
+    { "setorigin", PyQ__sv_setorigin, METH_VARARGS },
+    { "setmodel", PyQ__sv_setmodel, METH_VARARGS },
+    { "setsize", PyQ__sv_setsize, METH_VARARGS },
+    { NULL },
+};
+
+static PyGetSetDef PyQ__sv_getset[] = {
+    { "edict", PyQ__sv_getedict },
+    { "time", PyQ__sv_gettime },
+    { NULL },
+};
+
+static PyTypeObject PyQ__sv_type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "quake._sv",                                // tp_name
+    sizeof(PyQ__sv),                            // tp_basicsize
+    0,                                          // tp_itemsize
+    PyQ__sv_dealloc,                            // tp_dealloc
+    0,                                          // tp_vectorcall_offset
+    NULL,                                       // tp_getattr
+    NULL,                                       // tp_setattr
+    NULL,                                       // tp_as_async
+    NULL,                                       // tp_repr
+    NULL,                                       // tp_as_number
+    NULL,                                       // tp_as_sequence
+    NULL,                                       // tp_as_mapping
+    NULL,                                       // tp_hash
+    NULL,                                       // tp_call
+    NULL,                                       // tp_str
+    NULL,                                       // tp_getattro
+    NULL,                                       // tp_setattro
+    NULL,                                       // tp_as_buffer
+    Py_TPFLAGS_DEFAULT,                         // tp_flags
+    NULL,                                       // tp_doc
+    NULL,                                       // tp_traverse
+    NULL,                                       // tp_clear
+    NULL,                                       // tp_richcompare
+    0,                                          // tp_weaklistoffset
+    NULL,                                       // tp_iter
+    NULL,                                       // tp_iternext
+    PyQ__sv_methods,                            // tp_methods
+    NULL,                                       // tp_members
+    PyQ__sv_getset,                             // tp_getset
+    NULL,                                       // tp_base
+    NULL,                                       // tp_dict
+    NULL,                                       // tp_descr_get
+    NULL,                                       // tp_descr_set
+    0,                                          // tp_dictoffset
+    NULL,                                       // tp_init
+    NULL,                                       // tp_alloc
+    NULL,                                       // tp_new
+    NULL,                                       // tp_free
+    NULL,                                       // tp_is_gc
+    NULL,                                       // tp_bases
+    NULL,                                       // tp_mro
+    NULL,                                       // tp_cache
+    NULL,                                       // tp_subclasses
+    NULL,                                       // tp_weaklist
+    NULL,                                       // tp_del
+    0,                                          // tp_version_tag
+    NULL,                                       // tp_finalize
+    NULL,                                       // tp_vectorcall
+};
+
+//-------------------------------------------------------------------------------
 // quake.Entity class
 
 /**
@@ -2235,7 +2463,17 @@ PyObject *PyQ_quake_init(void)
 {
     PyObject *module;
 
+    PyQ__sv *sv = NULL;
+
     if (PyType_Ready(&PyQ_vec_type) == -1) {
+        return NULL;
+    }
+
+    if (PyType_Ready(&PyQ__sv_edict_type) == -1) {
+        return NULL;
+    }
+
+    if (PyType_Ready(&PyQ__sv_type) == -1) {
         return NULL;
     }
 
@@ -2250,6 +2488,8 @@ PyObject *PyQ_quake_init(void)
     }
 
     Py_INCREF(&PyQ_vec_type);
+    Py_INCREF(&PyQ__sv_edict_type);
+    Py_INCREF(&PyQ__sv_type);
     Py_INCREF(&PyQ_Entity_type);
 
     struct PyQ_namevalue constant_list[] = {
@@ -2331,10 +2571,19 @@ PyObject *PyQ_quake_init(void)
         goto error;
     }
 
+    sv = PyObject_New(PyQ__sv, &PyQ__sv_type);
+
+    if (!sv || PyModule_AddObject(module, "sv", (PyObject *) sv) == -1) {
+        goto error;
+    }
+
     return module;
 
 error:
+    Py_XDECREF(sv);
     Py_DECREF(&PyQ_Entity_type);
+    Py_DECREF(&PyQ__sv_type);
+    Py_DECREF(&PyQ__sv_edict_type);
     Py_DECREF(&PyQ_vec_type);
     Py_DECREF(module);
 
