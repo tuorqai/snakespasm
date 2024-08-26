@@ -923,6 +923,82 @@ static PyObject *PyQ__sv_getedict(PyObject *self, void *closure)
 }
 
 /**
+ * quake._sv.edicts getter
+ */
+static PyObject *PyQ__sv_getedicts(PyObject *self, void *closure)
+{
+    int i;
+    PyObject *list;
+
+    if (!sv.active && !PyQ_serverloading) {
+        PyErr_SetString(PyExc_RuntimeError, "server is not running");
+        return NULL;
+    }
+
+    list = PyList_New(0);
+
+    if (!list) {
+        return NULL;
+    }
+
+    for (i = 0; i < sv.num_edicts; i++) {
+        PyQ__sv_edict *edict;
+
+        // ignore free ents
+        if (EDICT_NUM(i)->free) {
+            continue;
+        }
+
+        edict = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type);
+
+        if (!edict) {
+            goto error;
+        }
+
+        if (i >= 1 && i <= svs.maxclients) {
+            edict->servernumber = -1;
+        } else {
+            edict->servernumber = PyQ_servernumber;
+        }
+
+        edict->index = i;
+
+        PyList_Append(list, (PyObject *) edict);
+        Py_DECREF(edict);
+    }
+
+    return list;
+
+error:
+    Py_DECREF(list);
+    return NULL;
+}
+
+/**
+ * quake._sv.world getter
+ */
+static PyObject *PyQ__sv_getworld(PyObject *self, void *closure)
+{
+    PyQ__sv_edict *world;
+
+    if (!sv.active && !PyQ_serverloading) {
+        PyErr_SetString(PyExc_RuntimeError, "server is not running");
+        return NULL;
+    }
+
+    world = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type);
+
+    if (!world) {
+        return NULL;
+    }
+
+    world->servernumber = -1;
+    world->index = 0;
+
+    return world;
+}
+
+/**
  * quake._sv.time getter
  */
 static PyObject *PyQ__sv_gettime(PyObject *self, void *closure)
@@ -939,6 +1015,8 @@ static PyMethodDef PyQ__sv_methods[] = {
 
 static PyGetSetDef PyQ__sv_getset[] = {
     { "edict", PyQ__sv_getedict },
+    { "edicts", PyQ__sv_getedicts },
+    { "world", PyQ__sv_getworld },
     { "time", PyQ__sv_gettime },
     { NULL },
 };
