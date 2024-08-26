@@ -1508,6 +1508,9 @@ void SV_SpawnServer (const char *server)
 	}
 	else sv.protocolflags = 0;
 
+// [tuorqai] tell to Python that the server is about to spawn
+	PyQ_ServerSpawn ();
+
 // load progs to get entity field count
 	PR_LoadProgs ();
 

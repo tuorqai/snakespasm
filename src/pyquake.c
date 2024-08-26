@@ -477,6 +477,27 @@ void PyQ_Shutdown(void)
     Py_FinalizeEx();
 }
 
+/**
+ * Server is spawning.
+ */
+void PyQ_ServerSpawn(void)
+{
+    PyQ_StringStorage *new_string_storage;
+
+    PyQ_servernumber++;
+
+    if (PyQ_string_storage_size < sv.max_edicts) {
+        new_string_storage = realloc(PyQ_string_storage, sizeof(*PyQ_string_storage) * sv.max_edicts);
+
+        if (!new_string_storage) {
+            Sys_Error("Out of memory."); // never going to happen
+        }
+
+        PyQ_string_storage = new_string_storage;
+        PyQ_string_storage_size = sv.max_edicts;
+    }
+}
+
 //------------------------------------------------------------------------------
 // QuakeC-style callbacks
 
@@ -600,18 +621,6 @@ static qboolean CallTwoEntityCallback(int callback, edict_t *edict1, edict_t *ed
  */
 static qboolean PyQ_EntitySpawn(edict_t *edict, qboolean after)
 {
-    // worldspawn is about to be spawned, means new server started
-    if (!after && edict == sv.edicts) {
-        PyQ_servernumber++;
-
-        if (PyQ_string_storage_size < sv.max_edicts) {
-            free(PyQ_string_storage);
-
-            PyQ_string_storage = malloc(sizeof(*PyQ_string_storage) * sv.max_edicts);
-            PyQ_string_storage_size = sv.max_edicts;
-        }
-    }
-
     return CallEntityCallback(PyQ_callback_entity_spawn, edict, after);
 }
 

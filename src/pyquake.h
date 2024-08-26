@@ -55,7 +55,7 @@ extern PyTypeObject PyQ_Entity_type;
 
 void PyQ_Init(void);
 void PyQ_Shutdown(void);
-void PyQ_LoadScripts(void);
+void PyQ_ServerSpawn(void);
 int PyQ_RunBuffer(const char *buffer);
 
 PyObject *PyQ_quake_init(void);
