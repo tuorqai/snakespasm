@@ -507,11 +507,317 @@ static PyObject *PyQ__sv_edict_richcmp(PyQ__sv_edict *a, PyQ__sv_edict *b, int o
     Py_RETURN_NOTIMPLEMENTED;
 }
 
+#define PyQ__sv_edict_NUMBER_GETTER(field) \
+    static PyObject *PyQ__sv_edict_get##field(PyQ__sv_edict *self, void *closure) { \
+        edict_t *edict = PyQ__sv_edict_get(self); \
+        if (!edict) { \
+            return NULL; \
+        } \
+        return PyFloat_FromDouble((double) edict->v.field); \
+    }
+
+#define PyQ__sv_edict_NUMBER_SETTER(field) \
+    static int PyQ__sv_edict_set##field(PyQ__sv_edict *self, PyObject *value, void *closure) { \
+        edict_t *edict; \
+        double d; \
+        edict = PyQ__sv_edict_get(self); \
+        if (!edict) { \
+            return -1; \
+        } \
+        d = PyFloat_AsDouble(value); \
+        if (PyErr_Occurred()) { \
+            return -1; \
+        } \
+        edict->v.field = (float) d; \
+        return 0; \
+    }
+
+#define PyQ__sv_edict_BITSET_GETTER(field) \
+    static PyObject *PyQ__sv_edict_get##field(PyQ__sv_edict *self, void *closure) { \
+        edict_t *edict = PyQ__sv_edict_get(self); \
+        if (!edict) { \
+            return NULL; \
+        } \
+        return PyLong_FromDouble((double) edict->v.field); \
+    }
+
+#define PyQ__sv_edict_BITSET_SETTER(field) \
+    static int PyQ__sv_edict_set##field(PyQ__sv_edict *self, PyObject *value, void *closure) { \
+        edict_t *edict; \
+        long n; \
+        edict = PyQ__sv_edict_get(self); \
+        if (!edict) { \
+            return -1; \
+        } \
+        n = PyLong_AsLong(value); \
+        if (PyErr_Occurred()) { \
+            return -1; \
+        } \
+        edict->v.field = (float) n; \
+        return 0; \
+    }
+
+#define PyQ__sv_edict_VECTOR_GETTER(field) \
+    static PyObject *PyQ__sv_edict_get##field(PyQ__sv_edict *self, void *closure) { \
+        PyErr_SetString(PyExc_NotImplementedError, "under construction"); \
+        return NULL; \
+    }
+
+#define PyQ__sv_edict_VECTOR_SETTER(field) \
+    static int PyQ__sv_edict_set##field(PyQ__sv_edict *self, PyObject *value, void *closure) { \
+        PyErr_SetString(PyExc_NotImplementedError, "under construction"); \
+        return -1; \
+    }
+
+#define PyQ__sv_edict_STRING_GETTER(field) \
+    static PyObject *PyQ__sv_edict_get##field(PyQ__sv_edict *self, void *closure) { \
+        PyErr_SetString(PyExc_NotImplementedError, "under construction"); \
+        return NULL; \
+    }
+
+#define PyQ__sv_edict_STRING_SETTER(field) \
+    static int PyQ__sv_edict_set##field(PyQ__sv_edict *self, PyObject *value, void *closure) { \
+        PyErr_SetString(PyExc_NotImplementedError, "under construction"); \
+        return -1; \
+    }
+
+#define PyQ__sv_edict_ENTITY_GETTER(field) \
+    static PyObject *PyQ__sv_edict_get##field(PyQ__sv_edict *self, void *closure) { \
+        PyErr_SetString(PyExc_NotImplementedError, "under construction"); \
+        return NULL; \
+    }
+
+#define PyQ__sv_edict_ENTITY_SETTER(field) \
+    static int PyQ__sv_edict_set##field(PyQ__sv_edict *self, PyObject *value, void *closure) { \
+        PyErr_SetString(PyExc_NotImplementedError, "under construction"); \
+        return -1; \
+    }
+
+PyQ__sv_edict_NUMBER_GETTER(modelindex)
+PyQ__sv_edict_VECTOR_GETTER(absmin)
+PyQ__sv_edict_VECTOR_GETTER(absmax)
+PyQ__sv_edict_NUMBER_GETTER(ltime)
+PyQ__sv_edict_NUMBER_GETTER(movetype)
+PyQ__sv_edict_NUMBER_GETTER(solid)
+PyQ__sv_edict_VECTOR_GETTER(origin)
+PyQ__sv_edict_VECTOR_GETTER(oldorigin)
+PyQ__sv_edict_VECTOR_GETTER(velocity)
+PyQ__sv_edict_VECTOR_GETTER(angles)
+PyQ__sv_edict_VECTOR_GETTER(avelocity)
+PyQ__sv_edict_VECTOR_GETTER(punchangle)
+PyQ__sv_edict_STRING_GETTER(classname)
+PyQ__sv_edict_STRING_GETTER(model)
+PyQ__sv_edict_NUMBER_GETTER(frame)
+PyQ__sv_edict_NUMBER_GETTER(skin)
+PyQ__sv_edict_BITSET_GETTER(effects)
+PyQ__sv_edict_VECTOR_GETTER(mins)
+PyQ__sv_edict_VECTOR_GETTER(maxs)
+PyQ__sv_edict_VECTOR_GETTER(size)
+PyQ__sv_edict_NUMBER_GETTER(touch)
+PyQ__sv_edict_NUMBER_GETTER(use)
+PyQ__sv_edict_NUMBER_GETTER(think)
+PyQ__sv_edict_NUMBER_GETTER(blocked)
+PyQ__sv_edict_NUMBER_GETTER(nextthink)
+PyQ__sv_edict_ENTITY_GETTER(groundentity)
+PyQ__sv_edict_NUMBER_GETTER(health)
+PyQ__sv_edict_NUMBER_GETTER(frags)
+PyQ__sv_edict_NUMBER_GETTER(weapon)
+PyQ__sv_edict_STRING_GETTER(weaponmodel)
+PyQ__sv_edict_NUMBER_GETTER(weaponframe)
+PyQ__sv_edict_NUMBER_GETTER(currentammo)
+PyQ__sv_edict_NUMBER_GETTER(ammo_shells)
+PyQ__sv_edict_NUMBER_GETTER(ammo_nails)
+PyQ__sv_edict_NUMBER_GETTER(ammo_rockets)
+PyQ__sv_edict_NUMBER_GETTER(ammo_cells)
+PyQ__sv_edict_BITSET_GETTER(items)
+PyQ__sv_edict_NUMBER_GETTER(takedamage)
+PyQ__sv_edict_ENTITY_GETTER(chain)
+PyQ__sv_edict_NUMBER_GETTER(deadflag)
+PyQ__sv_edict_VECTOR_GETTER(view_ofs)
+PyQ__sv_edict_NUMBER_GETTER(button0)
+PyQ__sv_edict_NUMBER_GETTER(button1)
+PyQ__sv_edict_NUMBER_GETTER(button2)
+PyQ__sv_edict_NUMBER_GETTER(impulse)
+PyQ__sv_edict_NUMBER_GETTER(fixangle)
+PyQ__sv_edict_VECTOR_GETTER(v_angle)
+PyQ__sv_edict_NUMBER_GETTER(idealpitch)
+PyQ__sv_edict_STRING_GETTER(netname)
+PyQ__sv_edict_NUMBER_GETTER(enemy)
+PyQ__sv_edict_BITSET_GETTER(flags)
+PyQ__sv_edict_NUMBER_GETTER(colormap)
+PyQ__sv_edict_NUMBER_GETTER(team)
+PyQ__sv_edict_NUMBER_GETTER(max_health)
+PyQ__sv_edict_NUMBER_GETTER(teleport_time)
+PyQ__sv_edict_NUMBER_GETTER(armortype)
+PyQ__sv_edict_NUMBER_GETTER(armorvalue)
+PyQ__sv_edict_NUMBER_GETTER(waterlevel)
+PyQ__sv_edict_NUMBER_GETTER(watertype)
+PyQ__sv_edict_NUMBER_GETTER(ideal_yaw)
+PyQ__sv_edict_NUMBER_GETTER(yaw_speed)
+PyQ__sv_edict_ENTITY_GETTER(aiment)
+PyQ__sv_edict_ENTITY_GETTER(goalentity)
+PyQ__sv_edict_BITSET_GETTER(spawnflags)
+PyQ__sv_edict_STRING_GETTER(target)
+PyQ__sv_edict_STRING_GETTER(targetname)
+PyQ__sv_edict_NUMBER_GETTER(dmg_take)
+PyQ__sv_edict_NUMBER_GETTER(dmg_save)
+PyQ__sv_edict_ENTITY_GETTER(dmg_inflictor)
+PyQ__sv_edict_ENTITY_GETTER(owner)
+PyQ__sv_edict_VECTOR_GETTER(movedir)
+PyQ__sv_edict_STRING_GETTER(message)
+PyQ__sv_edict_NUMBER_GETTER(sounds)
+PyQ__sv_edict_STRING_GETTER(noise)
+PyQ__sv_edict_STRING_GETTER(noise1)
+PyQ__sv_edict_STRING_GETTER(noise2)
+PyQ__sv_edict_STRING_GETTER(noise3)
+
+PyQ__sv_edict_NUMBER_SETTER(ltime)
+PyQ__sv_edict_NUMBER_SETTER(movetype)
+PyQ__sv_edict_NUMBER_SETTER(solid)
+PyQ__sv_edict_VECTOR_SETTER(velocity)
+PyQ__sv_edict_VECTOR_SETTER(angles)
+PyQ__sv_edict_VECTOR_SETTER(avelocity)
+PyQ__sv_edict_VECTOR_SETTER(punchangle)
+PyQ__sv_edict_STRING_SETTER(classname)
+PyQ__sv_edict_NUMBER_SETTER(frame)
+PyQ__sv_edict_NUMBER_SETTER(skin)
+PyQ__sv_edict_BITSET_SETTER(effects)
+PyQ__sv_edict_NUMBER_SETTER(nextthink)
+PyQ__sv_edict_ENTITY_SETTER(groundentity)
+PyQ__sv_edict_NUMBER_SETTER(health)
+PyQ__sv_edict_NUMBER_SETTER(frags)
+PyQ__sv_edict_NUMBER_SETTER(weapon)
+PyQ__sv_edict_STRING_SETTER(weaponmodel)
+PyQ__sv_edict_NUMBER_SETTER(weaponframe)
+PyQ__sv_edict_NUMBER_SETTER(currentammo)
+PyQ__sv_edict_NUMBER_SETTER(ammo_shells)
+PyQ__sv_edict_NUMBER_SETTER(ammo_nails)
+PyQ__sv_edict_NUMBER_SETTER(ammo_rockets)
+PyQ__sv_edict_NUMBER_SETTER(ammo_cells)
+PyQ__sv_edict_BITSET_SETTER(items)
+PyQ__sv_edict_NUMBER_SETTER(takedamage)
+PyQ__sv_edict_ENTITY_SETTER(chain)
+PyQ__sv_edict_NUMBER_SETTER(deadflag)
+PyQ__sv_edict_VECTOR_SETTER(view_ofs)
+PyQ__sv_edict_NUMBER_SETTER(button0)
+PyQ__sv_edict_NUMBER_SETTER(button1)
+PyQ__sv_edict_NUMBER_SETTER(button2)
+PyQ__sv_edict_NUMBER_SETTER(impulse)
+PyQ__sv_edict_NUMBER_SETTER(fixangle)
+PyQ__sv_edict_VECTOR_SETTER(v_angle)
+PyQ__sv_edict_NUMBER_SETTER(idealpitch)
+PyQ__sv_edict_STRING_SETTER(netname)
+PyQ__sv_edict_NUMBER_SETTER(enemy)
+PyQ__sv_edict_BITSET_SETTER(flags)
+PyQ__sv_edict_NUMBER_SETTER(colormap)
+PyQ__sv_edict_NUMBER_SETTER(team)
+PyQ__sv_edict_NUMBER_SETTER(max_health)
+PyQ__sv_edict_NUMBER_SETTER(teleport_time)
+PyQ__sv_edict_NUMBER_SETTER(armortype)
+PyQ__sv_edict_NUMBER_SETTER(armorvalue)
+PyQ__sv_edict_NUMBER_SETTER(waterlevel)
+PyQ__sv_edict_NUMBER_SETTER(watertype)
+PyQ__sv_edict_NUMBER_SETTER(ideal_yaw)
+PyQ__sv_edict_NUMBER_SETTER(yaw_speed)
+PyQ__sv_edict_ENTITY_SETTER(aiment)
+PyQ__sv_edict_ENTITY_SETTER(goalentity)
+PyQ__sv_edict_BITSET_SETTER(spawnflags)
+PyQ__sv_edict_STRING_SETTER(target)
+PyQ__sv_edict_STRING_SETTER(targetname)
+PyQ__sv_edict_NUMBER_SETTER(dmg_take)
+PyQ__sv_edict_NUMBER_SETTER(dmg_save)
+PyQ__sv_edict_ENTITY_SETTER(dmg_inflictor)
+PyQ__sv_edict_ENTITY_SETTER(owner)
+PyQ__sv_edict_VECTOR_SETTER(movedir)
+PyQ__sv_edict_STRING_SETTER(message)
+PyQ__sv_edict_NUMBER_SETTER(sounds)
+PyQ__sv_edict_STRING_SETTER(noise)
+PyQ__sv_edict_STRING_SETTER(noise1)
+PyQ__sv_edict_STRING_SETTER(noise2)
+PyQ__sv_edict_STRING_SETTER(noise3)
+
 static PyMethodDef PyQ__sv_edict_methods[] = {
     { NULL },
 };
 
 static PyGetSetDef PyQ__sv_edict_getset[] = {
+    { "modelindex",     (getter) PyQ__sv_edict_getmodelindex },
+    { "absmin",         (getter) PyQ__sv_edict_getabsmin },
+    { "absmax",         (getter) PyQ__sv_edict_getabsmax },
+    { "ltime",          (getter) PyQ__sv_edict_getltime,            (setter) PyQ__sv_edict_setltime },
+    { "movetype",       (getter) PyQ__sv_edict_getmovetype,         (setter) PyQ__sv_edict_setmovetype },
+    { "solid",          (getter) PyQ__sv_edict_getsolid,            (setter) PyQ__sv_edict_setsolid },
+    { "origin",         (getter) PyQ__sv_edict_getorigin },
+    { "oldorigin",      (getter) PyQ__sv_edict_getoldorigin },
+    { "velocity",       (getter) PyQ__sv_edict_getvelocity,         (setter) PyQ__sv_edict_setvelocity },
+    { "angles",         (getter) PyQ__sv_edict_getangles,           (setter) PyQ__sv_edict_setangles },
+    { "avelocity",      (getter) PyQ__sv_edict_getavelocity,        (setter) PyQ__sv_edict_setavelocity },
+    { "punchangle",     (getter) PyQ__sv_edict_getpunchangle,       (setter) PyQ__sv_edict_setpunchangle },
+    { "classname",      (getter) PyQ__sv_edict_getclassname,        (setter) PyQ__sv_edict_setclassname },
+    { "model",          (getter) PyQ__sv_edict_getmodel },
+    { "frame",          (getter) PyQ__sv_edict_getframe,            (setter) PyQ__sv_edict_setframe },
+    { "skin",           (getter) PyQ__sv_edict_getskin,             (setter) PyQ__sv_edict_setskin },
+    { "effects",        (getter) PyQ__sv_edict_geteffects,          (setter) PyQ__sv_edict_seteffects },
+    { "mins",           (getter) PyQ__sv_edict_getmins },
+    { "maxs",           (getter) PyQ__sv_edict_getmaxs },
+    { "size",           (getter) PyQ__sv_edict_getsize },
+    { "touch",          (getter) PyQ__sv_edict_gettouch },
+    { "use",            (getter) PyQ__sv_edict_getuse },
+    { "think",          (getter) PyQ__sv_edict_getthink },
+    { "blocked",        (getter) PyQ__sv_edict_getblocked },
+    { "nextthink",      (getter) PyQ__sv_edict_getnextthink,        (setter) PyQ__sv_edict_setnextthink },
+    { "groundentity",   (getter) PyQ__sv_edict_getgroundentity,     (setter) PyQ__sv_edict_setgroundentity },
+    { "health",         (getter) PyQ__sv_edict_gethealth,           (setter) PyQ__sv_edict_sethealth },
+    { "frags",          (getter) PyQ__sv_edict_getfrags,            (setter) PyQ__sv_edict_setfrags },
+    { "weapon",         (getter) PyQ__sv_edict_getweapon,           (setter) PyQ__sv_edict_setweapon },
+    { "weaponmodel",    (getter) PyQ__sv_edict_getweaponmodel,      (setter) PyQ__sv_edict_setweaponmodel },
+    { "weaponframe",    (getter) PyQ__sv_edict_getweaponframe,      (setter) PyQ__sv_edict_setweaponframe },
+    { "currentammo",    (getter) PyQ__sv_edict_getcurrentammo,      (setter) PyQ__sv_edict_setcurrentammo },
+    { "ammo_shells",    (getter) PyQ__sv_edict_getammo_shells,      (setter) PyQ__sv_edict_setammo_shells },
+    { "ammo_nails",     (getter) PyQ__sv_edict_getammo_nails,       (setter) PyQ__sv_edict_setammo_nails },
+    { "ammo_rockets",   (getter) PyQ__sv_edict_getammo_rockets,     (setter) PyQ__sv_edict_setammo_rockets },
+    { "ammo_cells",     (getter) PyQ__sv_edict_getammo_cells,       (setter) PyQ__sv_edict_setammo_cells },
+    { "items",          (getter) PyQ__sv_edict_getitems,            (setter) PyQ__sv_edict_setitems },
+    { "takedamage",     (getter) PyQ__sv_edict_gettakedamage,       (setter) PyQ__sv_edict_settakedamage },
+    { "chain",          (getter) PyQ__sv_edict_getchain,            (setter) PyQ__sv_edict_setchain },
+    { "deadflag",       (getter) PyQ__sv_edict_getdeadflag,         (setter) PyQ__sv_edict_setdeadflag },
+    { "view_ofs",       (getter) PyQ__sv_edict_getview_ofs,         (setter) PyQ__sv_edict_setview_ofs },
+    { "button0",        (getter) PyQ__sv_edict_getbutton0,          (setter) PyQ__sv_edict_setbutton0 },
+    { "button1",        (getter) PyQ__sv_edict_getbutton1,          (setter) PyQ__sv_edict_setbutton1 },
+    { "button2",        (getter) PyQ__sv_edict_getbutton2,          (setter) PyQ__sv_edict_setbutton2 },
+    { "impulse",        (getter) PyQ__sv_edict_getimpulse,          (setter) PyQ__sv_edict_setimpulse },
+    { "fixangle",       (getter) PyQ__sv_edict_getfixangle,         (setter) PyQ__sv_edict_setfixangle },
+    { "v_angle",        (getter) PyQ__sv_edict_getv_angle,          (setter) PyQ__sv_edict_setv_angle },
+    { "idealpitch",     (getter) PyQ__sv_edict_getidealpitch,       (setter) PyQ__sv_edict_setidealpitch },
+    { "netname",        (getter) PyQ__sv_edict_getnetname,          (setter) PyQ__sv_edict_setnetname },
+    { "enemy",          (getter) PyQ__sv_edict_getenemy,            (setter) PyQ__sv_edict_setenemy },
+    { "flags",          (getter) PyQ__sv_edict_getflags,            (setter) PyQ__sv_edict_setflags },
+    { "colormap",       (getter) PyQ__sv_edict_getcolormap,         (setter) PyQ__sv_edict_setcolormap },
+    { "team",           (getter) PyQ__sv_edict_getteam,             (setter) PyQ__sv_edict_setteam },
+    { "max_health",     (getter) PyQ__sv_edict_getmax_health,       (setter) PyQ__sv_edict_setmax_health },
+    { "teleport_time",  (getter) PyQ__sv_edict_getteleport_time,    (setter) PyQ__sv_edict_setteleport_time },
+    { "armortype",      (getter) PyQ__sv_edict_getarmortype,        (setter) PyQ__sv_edict_setarmortype },
+    { "armorvalue",     (getter) PyQ__sv_edict_getarmorvalue,       (setter) PyQ__sv_edict_setarmorvalue },
+    { "waterlevel",     (getter) PyQ__sv_edict_getwaterlevel,       (setter) PyQ__sv_edict_setwaterlevel },
+    { "watertype",      (getter) PyQ__sv_edict_getwatertype,        (setter) PyQ__sv_edict_setwatertype },
+    { "ideal_yaw",      (getter) PyQ__sv_edict_getideal_yaw,        (setter) PyQ__sv_edict_setideal_yaw },
+    { "yaw_speed",      (getter) PyQ__sv_edict_getyaw_speed,        (setter) PyQ__sv_edict_setyaw_speed },
+    { "aiment",         (getter) PyQ__sv_edict_getaiment,           (setter) PyQ__sv_edict_setaiment },
+    { "goalentity",     (getter) PyQ__sv_edict_getgoalentity,       (setter) PyQ__sv_edict_setgoalentity },
+    { "spawnflags",     (getter) PyQ__sv_edict_getspawnflags,       (setter) PyQ__sv_edict_setspawnflags },
+    { "target",         (getter) PyQ__sv_edict_gettarget,           (setter) PyQ__sv_edict_settarget },
+    { "targetname",     (getter) PyQ__sv_edict_gettargetname,       (setter) PyQ__sv_edict_settargetname },
+    { "dmg_take",       (getter) PyQ__sv_edict_getdmg_take,         (setter) PyQ__sv_edict_setdmg_take },
+    { "dmg_save",       (getter) PyQ__sv_edict_getdmg_save,         (setter) PyQ__sv_edict_setdmg_save },
+    { "dmg_inflictor",  (getter) PyQ__sv_edict_getdmg_inflictor,    (setter) PyQ__sv_edict_setdmg_inflictor },
+    { "owner",          (getter) PyQ__sv_edict_getowner,            (setter) PyQ__sv_edict_setowner },
+    { "movedir",        (getter) PyQ__sv_edict_getmovedir,          (setter) PyQ__sv_edict_setmovedir },
+    { "message",        (getter) PyQ__sv_edict_getmessage,          (setter) PyQ__sv_edict_setmessage },
+    { "sounds",         (getter) PyQ__sv_edict_getsounds,           (setter) PyQ__sv_edict_setsounds },
+    { "noise",          (getter) PyQ__sv_edict_getnoise,            (setter) PyQ__sv_edict_setnoise },
+    { "noise1",         (getter) PyQ__sv_edict_getnoise1,           (setter) PyQ__sv_edict_setnoise1 },
+    { "noise2",         (getter) PyQ__sv_edict_getnoise2,           (setter) PyQ__sv_edict_setnoise2 },
+    { "noise3",         (getter) PyQ__sv_edict_getnoise3,           (setter) PyQ__sv_edict_setnoise3 },
     { NULL },
 };
 
