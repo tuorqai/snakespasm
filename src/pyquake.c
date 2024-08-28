@@ -432,7 +432,6 @@ void PyQ_Init(void)
     PyConfig_SetBytesString(&config, &config.program_name, host_parms->argv[0]);
 
     PyImport_AppendInittab("quake", &PyQ_quake_init);
-    PyImport_AppendInittab("quakecl", &PyQ_quakecl_init);
 
     status = Py_InitializeFromConfig(&config);
 
