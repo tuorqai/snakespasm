@@ -17,7 +17,14 @@ typedef struct {
     char reprbuf[32];
 } PyQ_vec;
 
+typedef struct {
+    PyObject_HEAD
+    int servernumber;
+    int index;
+} PyQ__sv_edict;
+
 extern PyTypeObject PyQ_vec_type;
+extern PyTypeObject PyQ__sv_edict_type;
 
 //------------------------------------------------------------------------------
 
@@ -43,14 +50,6 @@ typedef struct {
 
 extern PyQ_StringStorage *PyQ_string_storage;
 extern int PyQ_string_storage_size;
-
-typedef struct {
-    PyObject_HEAD
-    int servernumber;
-    int index;
-} PyQ_Entity;
-
-extern PyTypeObject PyQ_Entity_type;
 
 //------------------------------------------------------------------------------
 

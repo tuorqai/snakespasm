@@ -557,7 +557,7 @@ static qboolean CallSimpleCallback(int callback, qboolean after)
 static qboolean CallEntityCallback(int callback, edict_t *edict, qboolean after)
 {
     PyObject *function, *result;
-    PyQ_Entity *entity;
+    PyQ__sv_edict *e;
 
     qboolean override = false;
 
@@ -567,18 +567,19 @@ static qboolean CallEntityCallback(int callback, edict_t *edict, qboolean after)
         return false;
     }
 
-    entity = (PyQ_Entity *) PyObject_CallNoArgs((PyObject *) &PyQ_Entity_type);
+    e = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type);
 
-    if (entity) {
-        entity->index = NUM_FOR_EDICT(edict);
-        result = PyObject_CallOneArg(function, (PyObject *) entity);
+    if (e) {
+        e->servernumber = PyQ_servernumber;
+        e->index = NUM_FOR_EDICT(edict);
+        result = PyObject_CallOneArg(function, (PyObject *) e);
 
         if (result && Py_IsTrue(result)) {
             override = true;
         }
 
         Py_XDECREF(result);
-        Py_DECREF((PyObject *) entity);
+        Py_DECREF((PyObject *) e);
     }
 
     PyQ_CheckError();
@@ -588,7 +589,7 @@ static qboolean CallEntityCallback(int callback, edict_t *edict, qboolean after)
 static qboolean CallTwoEntityCallback(int callback, edict_t *edict1, edict_t *edict2, qboolean after)
 {
     PyObject *function, *args, *result;
-    PyQ_Entity *entity1, *entity2;
+    PyQ__sv_edict *e1, *e2;
 
     qboolean override = false;
 
@@ -598,14 +599,15 @@ static qboolean CallTwoEntityCallback(int callback, edict_t *edict1, edict_t *ed
         return false;
     }
 
-    entity1 = (PyQ_Entity *) PyObject_CallNoArgs((PyObject *) &PyQ_Entity_type);
-    entity2 = (PyQ_Entity *) PyObject_CallNoArgs((PyObject *) &PyQ_Entity_type);
+    e1 = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type);
+    e2 = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type);
 
-    if (entity1 && entity2) {
-        entity1->index = NUM_FOR_EDICT(edict1);
-        entity2->index = NUM_FOR_EDICT(edict2);
+    if (e1 && e2) {
+        e1->servernumber = e2->servernumber = PyQ_servernumber;
+        e1->index = NUM_FOR_EDICT(edict1);
+        e2->index = NUM_FOR_EDICT(edict2);
 
-        args = Py_BuildValue("(OO)", entity1, entity2);
+        args = Py_BuildValue("(OO)", e1, e2);
 
         if (args) {
             result = PyObject_Call(function, args, NULL);
@@ -619,8 +621,8 @@ static qboolean CallTwoEntityCallback(int callback, edict_t *edict1, edict_t *ed
         }
     }
 
-    Py_XDECREF((PyObject *) entity1);
-    Py_XDECREF((PyObject *) entity2);
+    Py_XDECREF((PyObject *) e1);
+    Py_XDECREF((PyObject *) e2);
 
     PyQ_CheckError();
     return override;
