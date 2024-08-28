@@ -67,15 +67,15 @@ static qboolean     PyQ_console_output_set;
 // quakeutil.py
 
 static char const *PyQ_quakeutil_source =
-    "import io, codeop, quakecl\n"
+    "import io, codeop, quake\n"
     "\n"
     "class QuakeConsoleOut(io.TextIOBase):\n"
     "    def write(self, str):\n"
-    "        quakecl.console_print(str)\n"
+    "        quake.cl.print(str, end='')\n"
     "\n"
     "class QuakeConsoleErr(io.TextIOBase):\n"
     "    def write(self, str):\n"
-    "        quakecl.console_error(str)\n"
+    "        quake.cl.print('\\x02', str, sep='', end='')\n"
     "\n"
     "def compile(source, filename='<input>', symbol='single'):\n"
     "    return codeop.compile_command(source, filename, symbol)\n";

@@ -76,7 +76,7 @@ static int PyQ_PrintToBuffer(char *buffer, Py_ssize_t bufsize, PyObject *args, P
         PyObject *item, *itemstr;
         char const *str;
         Py_ssize_t len;
-        int failed = 0;
+        int truncated = 0;
 
         item = PyTuple_GetItem(args, i);
         itemstr = PyObject_Str(item); // new reference
@@ -89,8 +89,9 @@ static int PyQ_PrintToBuffer(char *buffer, Py_ssize_t bufsize, PyObject *args, P
 
         if (str) {
             if ((pos + len + seplen + endlen + 1) > bufsize) {
-                PyErr_SetString(PyExc_MemoryError, "string can't fit into buffer");
-                failed = 1;
+                // truncate
+                Q_strncpy(&buffer[pos], str, bufsize - pos - 1);
+                truncated = 1;
             } else {
                 Q_strcpy(&buffer[pos], str);
                 pos += len;
@@ -104,8 +105,9 @@ static int PyQ_PrintToBuffer(char *buffer, Py_ssize_t bufsize, PyObject *args, P
 
         Py_DECREF(itemstr);
 
-        if (failed) {
-            return -1;
+        if (truncated) {
+            buffer[bufsize - 1] = '\0';
+            return 1;
         }
     }
 
@@ -1594,6 +1596,103 @@ static PyTypeObject PyQ__sv_type = {
     NULL,                                       // tp_vectorcall
 };
 
+//-------------------------------------------------------------------------------
+// quake._cl class
+
+typedef struct {
+    PyObject_HEAD
+} PyQ__cl;
+
+/**
+ * quake._cl.__dealloc__
+ */
+static void PyQ__cl_dealloc(PyObject *self)
+{
+    Py_TYPE(self)->tp_free(self);
+}
+
+/**
+ * quake._cl.print
+ */
+static PyObject *PyQ__cl_print(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    char buffer[4096]; // Con_Printf() has a 4k buffer
+    int status;
+
+    status = PyQ_PrintToBuffer(buffer, sizeof(buffer), args, kwargs);
+
+    if (status == -1) {
+        // Something went horribly wrong
+        return NULL;
+    }
+
+    Con_Printf("%s", buffer);
+
+    if (status == 1) {
+        // Output got truncated, warn user
+        Con_Printf("%c\nconsole output from the last Python command got truncated.\n", 2);
+    }
+
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef PyQ__cl_methods[] = {
+    { "print",              (PyCFunction) PyQ__cl_print,            METH_VARARGS | METH_KEYWORDS },
+    { NULL },
+};
+
+static PyTypeObject PyQ__cl_type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "quake._cl",                                // tp_name
+    sizeof(PyQ__cl),                            // tp_basicsize
+    0,                                          // tp_itemsize
+    PyQ__cl_dealloc,                            // tp_dealloc
+    0,                                          // tp_vectorcall_offset
+    NULL,                                       // tp_getattr
+    NULL,                                       // tp_setattr
+    NULL,                                       // tp_as_async
+    NULL,                                       // tp_repr
+    NULL,                                       // tp_as_number
+    NULL,                                       // tp_as_sequence
+    NULL,                                       // tp_as_mapping
+    NULL,                                       // tp_hash
+    NULL,                                       // tp_call
+    NULL,                                       // tp_str
+    NULL,                                       // tp_getattro
+    NULL,                                       // tp_setattro
+    NULL,                                       // tp_as_buffer
+    Py_TPFLAGS_DEFAULT,                         // tp_flags
+    NULL,                                       // tp_doc
+    NULL,                                       // tp_traverse
+    NULL,                                       // tp_clear
+    NULL,                                       // tp_richcompare
+    0,                                          // tp_weaklistoffset
+    NULL,                                       // tp_iter
+    NULL,                                       // tp_iternext
+    PyQ__cl_methods,                            // tp_methods
+    NULL,                                       // tp_members
+    NULL,                                       // tp_getset
+    NULL,                                       // tp_base
+    NULL,                                       // tp_dict
+    NULL,                                       // tp_descr_get
+    NULL,                                       // tp_descr_set
+    0,                                          // tp_dictoffset
+    NULL,                                       // tp_init
+    NULL,                                       // tp_alloc
+    NULL,                                       // tp_new
+    NULL,                                       // tp_free
+    NULL,                                       // tp_is_gc
+    NULL,                                       // tp_bases
+    NULL,                                       // tp_mro
+    NULL,                                       // tp_cache
+    NULL,                                       // tp_subclasses
+    NULL,                                       // tp_weaklist
+    NULL,                                       // tp_del
+    0,                                          // tp_version_tag
+    NULL,                                       // tp_finalize
+    NULL,                                       // tp_vectorcall
+};
+
 //------------------------------------------------------------------------------
 // quake module
 
@@ -1868,6 +1967,7 @@ PyObject *PyQ_quake_init(void)
     PyObject *module;
 
     PyQ__sv *sv = NULL;
+    PyQ__cl *cl = NULL;
 
     if (PyType_Ready(&PyQ_vec_type) == -1) {
         return NULL;
@@ -1881,6 +1981,10 @@ PyObject *PyQ_quake_init(void)
         return NULL;
     }
 
+    if (PyType_Ready(&PyQ__cl_type) == -1) {
+        return NULL;
+    }
+
     module = PyModule_Create(&quake_module);
 
     if (!module) {
@@ -1890,6 +1994,7 @@ PyObject *PyQ_quake_init(void)
     Py_INCREF(&PyQ_vec_type);
     Py_INCREF(&PyQ__sv_edict_type);
     Py_INCREF(&PyQ__sv_type);
+    Py_INCREF(&PyQ__cl_type);
 
     struct PyQ_namevalue constant_list[] = {
         { "IT_AXE", IT_AXE },
@@ -1972,10 +2077,17 @@ PyObject *PyQ_quake_init(void)
         goto error;
     }
 
+    cl = PyObject_New(PyQ__cl, &PyQ__cl_type);
+
+    if (!cl || PyModule_AddObject(module, "cl", (PyObject *) cl) == -1) {
+        goto error;
+    }
+
     return module;
 
 error:
     Py_XDECREF(sv);
+    Py_DECREF(&PyQ__cl_type);
     Py_DECREF(&PyQ__sv_type);
     Py_DECREF(&PyQ__sv_edict_type);
     Py_DECREF(&PyQ_vec_type);
