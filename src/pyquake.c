@@ -21,37 +21,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 //------------------------------------------------------------------------------
 
-enum
-{
-    PyQ_callback_entity_spawn,
-    PyQ_callback_entity_touch,
-    PyQ_callback_entity_think,
-    PyQ_callback_entity_blocked,
-    PyQ_callback_start_frame,
-    PyQ_callback_player_pre_think,
-    PyQ_callback_player_post_think,
-    PyQ_callback_client_kill,
-    PyQ_callback_client_connect,
-    PyQ_callback_put_client_in_server,
-    PyQ_callback_set_new_parms,
-    PyQ_callback_set_change_parms,
-    PyQ_total_callbacks,
-};
-
-struct PyQ_callback
-{
-    char const *name;
-    char const *aftername;
-    PyObject *function;
-    PyObject *afterfunction;
-};
-
-//------------------------------------------------------------------------------
-
 int                 PyQ_servernumber;
 qboolean            PyQ_serverloading;
 PyQ_StringStorage  *PyQ_string_storage;
 int                 PyQ_string_storage_size;
+
+cvar_t              py_strict = { "py_strict", "1", CVAR_ARCHIVE };
+cvar_t              py_override_progs = { "py_override_progs", "0", CVAR_ARCHIVE };
 
 static PyObject    *PyQ_main;
 static PyObject    *PyQ_progs;
@@ -80,21 +56,6 @@ static char const *PyQ_quakeutil_source =
     "def compile(source, filename='<input>', symbol='single'):\n"
     "    return codeop.compile_command(source, filename, symbol)\n";
 
-static struct PyQ_callback PyQ_callbacks[] = {
-    { "entityspawn",        "afterentityspawn",         NULL, NULL },
-    { "entitytouch",        "afterentitytouch",         NULL, NULL },
-    { "entitythink",        "afterentitythink",         NULL, NULL },
-    { "entityblocked",      "afterentityblocked",       NULL, NULL },
-    { "startframe",         "afterstartframe",          NULL, NULL },
-    { "playerprethink",     "afterplayerprethink",      NULL, NULL },
-    { "playerpostthink",    "afterplayerpostthink",     NULL, NULL },
-    { "clientkill",         "afterclientkill",          NULL, NULL },
-    { "clientconnect",      "afterclientconnect",       NULL, NULL },
-    { "putclientinserver",  "afterputclientinserver",   NULL, NULL },
-    { "setnewparms",        "aftersetnewparms",         NULL, NULL },
-    { "setchangeparms",     "aftersetchangeparms",      NULL, NULL },
-};
-
 //------------------------------------------------------------------------------
 
 static void PyQ_CheckError(void)
@@ -108,6 +69,143 @@ static void PyQ_CheckError(void)
 
         PyErr_Print();
     }
+}
+
+//------------------------------------------------------------------------------
+// Hooks
+
+static int PyQ_InitHooks(void)
+{
+    int i;
+
+    char const *hooknames[] = {
+        "serverspawn", "entityspawn", "entitytouch", "entitythink",
+        "entityblocked", "startframe", "playerprethink", "playerpostthink",
+        "clientkill", "clientconnect", "putclientinserver", "setnewparms",
+        "setchangeparms",
+    };
+
+    // PyQ_hooks is a dictionary object which is initialized during the 'quake'
+    // module initialization.
+
+    if (!PyQ_hooks) {
+        // an exceptional case
+        return -1;
+    }
+
+    for (i = 0; i < sizeof(hooknames) / sizeof(*hooknames); i++) {
+        PyObject *emptylist = PyList_New(0);
+
+        if (!emptylist) {
+            // another exceptional case
+            return -1;
+        }
+
+        PyDict_SetItemString(PyQ_hooks, hooknames[i], emptylist);
+    }
+
+    return 0;
+}
+
+static int PyQ_HookArgs(PyObject **pargs, edict_t *qedict1, edict_t *qedict2)
+{
+    *pargs = NULL;
+
+    // No-entity callback
+    if (!qedict1) {
+        return 0;
+    }
+
+    // Single-entity callback
+    if (!qedict2) {
+        PyQ__sv_edict *edict = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type);
+
+        if (edict) {
+            PyObject *args = PyTuple_Pack(1, edict);
+
+            if (args) {
+                edict->servernumber = PyQ_servernumber;
+                edict->index = NUM_FOR_EDICT(qedict1);
+
+                *pargs = args;
+                return 0;
+            }
+
+            Py_DECREF(edict);
+        }
+    }
+    
+    // Two-entity callback
+    if (qedict1 && qedict2) {
+        PyQ__sv_edict *edict1 = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type);
+
+        if (edict1) {
+            PyQ__sv_edict *edict2 = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type);
+
+            if (edict2) {
+                PyObject *args = PyTuple_Pack(2, edict1, edict2);
+
+                if (args) {
+                    edict1->servernumber = edict2->servernumber = PyQ_servernumber;
+                    edict1->index = NUM_FOR_EDICT(qedict1);
+                    edict2->index = NUM_FOR_EDICT(qedict2);
+
+                    *pargs = args;
+                    return 0;
+                }
+
+                Py_DECREF(edict2);
+            }
+
+            Py_DECREF(edict1);
+        }
+    }
+
+    return -1;
+}
+
+static int PyQ_CallHook(char const *name, edict_t *qedict1, edict_t *qedict2)
+{
+    PyObject *item, *args;
+
+    item = PyDict_GetItemString(PyQ_hooks, name);
+
+    if (!item) {
+        return -1;
+    }
+
+    if (PyQ_HookArgs(&args, qedict1, qedict2) == -1) {
+        return -1;
+    }
+
+    if (PyList_Check(item)) {
+        // Is this a list? (normal situation)
+        Py_ssize_t i, len = PyList_GET_SIZE(item);
+
+        for (i = 0; i < len; i++) {
+            PyObject *listitem = PyList_GET_ITEM(item, i);
+
+            if (!PyObject_CallObject(listitem, args)) {
+                Py_XDECREF(args);
+                return -1;
+            }
+        }
+    } else if (PyCallable_Check(item)) {
+        // If it's not a list... is it callable?
+        if (!PyObject_CallObject(item, args)) {
+            Py_XDECREF(args);
+            return -1;
+        }
+    } else {
+        // User is an idiot and/or fucked up, tell them.
+        PyErr_SetString(PyExc_RuntimeError, "hook is neither a list nor callable\n");
+        Py_XDECREF(args);
+        return -1;
+    }
+
+    Py_XDECREF(args);
+
+    return 0;
 }
 
 //------------------------------------------------------------------------------
@@ -279,27 +377,12 @@ static void PyQ_Py_f(void)
 }
 
 /**
- * Get pyprogs callbacks from dictionary.
- */
-static void PyQ_GetCallbacks(PyObject *dict)
-{
-    int callback;
-
-    for (callback = 0; callback < PyQ_total_callbacks; callback++) {
-        struct PyQ_callback *c = &PyQ_callbacks[callback];
-
-        c->function = PyDict_GetItemString(dict, c->name);
-        c->afterfunction = PyDict_GetItemString(dict, c->aftername);
-    }
-}
-
-/**
  * Imports 'pyprogs' module/package.
  */
 static void PyQ_LoadProgs(void)
 {
     PyQ_progs = PyQ_ImportModule("pyprogs");
-
+#if 0
     if (PyQ_progs) {
         PyObject *dict = PyObject_GetAttrString(PyQ_progs, "callbacks");
 
@@ -309,7 +392,7 @@ static void PyQ_LoadProgs(void)
 
         Py_XDECREF(dict);
     }
-
+#endif
     PyQ_CheckError();
 }
 
@@ -461,8 +544,14 @@ void PyQ_Init(void)
         Con_Printf("PyQ_InitQuakeUtil() failed");
     }
 
+    if (PyQ_InitHooks() == -1) {
+        Sys_Error("Python error");
+    }
+
     PyQ_LoadProgs();
 
+    Cvar_RegisterVariable(&py_strict);
+    Cvar_RegisterVariable(&py_override_progs);
     Cmd_AddCommand("py", PyQ_Py_f);
     Cmd_AddCommand("py_clear", PyQ_PyClear_f);
 
@@ -505,360 +594,101 @@ void PyQ_PreServerSpawn(void)
 void PyQ_PostServerSpawn(void)
 {
     PyQ_serverloading = false;
-}
-
-//------------------------------------------------------------------------------
-// QuakeC-style callbacks
-
-static PyObject *GetCallbackObject(int callback, qboolean after)
-{
-    PyObject *function;
-
-    if (after) {
-        function = PyDict_GetItemString(PyQ_globals, PyQ_callbacks[callback].aftername);
-        
-        if (!function) {
-            function = PyQ_callbacks[callback].afterfunction;
-        }
-    } else {
-        function = PyDict_GetItemString(PyQ_globals, PyQ_callbacks[callback].name);
-        
-        if (!function) {
-            function = PyQ_callbacks[callback].function;
-        }
-    }
-
-    return function;
-}
-
-static qboolean CallSimpleCallback(int callback, qboolean after)
-{
-    qboolean override = false;
-    PyObject *function, *result;
-
-    function = GetCallbackObject(callback, after);
-
-    if (!function) {
-        return false;
-    }
-
-    result = PyObject_CallNoArgs(function);
-
-    if (result && Py_IsTrue(result)) {
-        override = true;
-    }
-
-    Py_XDECREF(result);
-    PyQ_CheckError();
-    return override;
-}
-
-static qboolean CallEntityCallback(int callback, edict_t *edict, qboolean after)
-{
-    PyObject *function, *result;
-    PyQ__sv_edict *e;
-
-    qboolean override = false;
-
-    function = GetCallbackObject(callback, after);
-
-    if (!function) {
-        return false;
-    }
-
-    e = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type);
-
-    if (e) {
-        e->servernumber = PyQ_servernumber;
-        e->index = NUM_FOR_EDICT(edict);
-        result = PyObject_CallOneArg(function, (PyObject *) e);
-
-        if (result && Py_IsTrue(result)) {
-            override = true;
-        }
-
-        Py_XDECREF(result);
-        Py_DECREF((PyObject *) e);
-    }
-
-    PyQ_CheckError();
-    return override;
-}
-
-static qboolean CallTwoEntityCallback(int callback, edict_t *edict1, edict_t *edict2, qboolean after)
-{
-    PyObject *function, *args, *result;
-    PyQ__sv_edict *e1, *e2;
-
-    qboolean override = false;
-
-    function = GetCallbackObject(callback, after);
-
-    if (!function) {
-        return false;
-    }
-
-    e1 = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type);
-    e2 = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type);
-
-    if (e1 && e2) {
-        e1->servernumber = e2->servernumber = PyQ_servernumber;
-        e1->index = NUM_FOR_EDICT(edict1);
-        e2->index = NUM_FOR_EDICT(edict2);
-
-        args = Py_BuildValue("(OO)", e1, e2);
-
-        if (args) {
-            result = PyObject_Call(function, args, NULL);
-
-            if (result && Py_IsTrue(result)) {
-                override = true;
-            }
-
-            Py_XDECREF(result);
-            Py_DECREF(args);
-        }
-    }
-
-    Py_XDECREF((PyObject *) e1);
-    Py_XDECREF((PyObject *) e2);
-
-    PyQ_CheckError();
-    return override;
-}
-
-/**
- * Called when entity is about to be spawned.
- */
-static qboolean PyQ_EntitySpawn(edict_t *edict, qboolean after)
-{
-    return CallEntityCallback(PyQ_callback_entity_spawn, edict, after);
-}
-
-/**
- * entity.touch()
- */
-static qboolean PyQ_EntityTouch(edict_t *edict1, edict_t *edict2, qboolean after)
-{
-    return CallTwoEntityCallback(PyQ_callback_entity_touch, edict1, edict2, after);
-}
-
-/**
- * entity.think()
- */
-static qboolean PyQ_EntityThink(edict_t *edict, qboolean after)
-{
-    return CallEntityCallback(PyQ_callback_entity_think, edict, after);
-}
-
-/**
- * entity.blocked()
- */
-static qboolean PyQ_EntityBlocked(edict_t *edict1, edict_t *edict2, qboolean after)
-{
-    return CallTwoEntityCallback(PyQ_callback_entity_blocked, edict1, edict2, after);
-}
-
-/**
- * StartFrame()
- */
-static qboolean PyQ_StartFrame(qboolean after)
-{
-    return CallSimpleCallback(PyQ_callback_start_frame, after);
-}
-
-/**
- * PlayerPreThink()
- */
-static qboolean PyQ_PlayerPreThink(edict_t *edict, qboolean after)
-{
-    return CallEntityCallback(PyQ_callback_player_pre_think, edict, after);
-}
-
-/**
- * PlayerPostThink()
- */
-static qboolean PyQ_PlayerPostThink(edict_t *edict, qboolean after)
-{
-    return CallEntityCallback(PyQ_callback_player_post_think, edict, after);
-}
-
-/**
- * ClientKill()
- */
-static qboolean PyQ_ClientKill(edict_t *edict, qboolean after)
-{
-    return CallEntityCallback(PyQ_callback_client_kill, edict, after);
-}
-
-/**
- * ClientConnect()
- */
-static qboolean PyQ_ClientConnect(edict_t *edict, qboolean after)
-{
-    return CallEntityCallback(PyQ_callback_client_connect, edict, after);
-}
-
-/**
- * PutClientInServer()
- */
-static qboolean PyQ_PutClientInServer(edict_t *edict, qboolean after)
-{
-    return CallEntityCallback(PyQ_callback_put_client_in_server, edict, after);
-}
-
-/**
- * SetNewParms()
- */
-static qboolean PyQ_SetNewParms(qboolean after)
-{
-    return CallSimpleCallback(PyQ_callback_set_new_parms, after);
-}
-
-/**
- * SetChangeParms()
- */
-static qboolean PyQ_SetChangeParms(edict_t *edict, qboolean after)
-{
-    return CallEntityCallback(PyQ_callback_set_change_parms, edict, after);
+    PyQ_CallHook("serverspawn", NULL, NULL);
 }
 
 //------------------------------------------------------------------------------
 // Python/QuakeC Adapter
+//
+// This was reworked heavily. In the past, every callback had two versions,
+// which were called before or after some event. Callback which was called
+// before event, could return True value to signal that QuakeC function
+// should not be called (overridden). Now callbacks (or hooks) called after
+// QuakeC function was executed, but they still could be suppressed by
+// "py_override_progs" cvar.
 
 qboolean PyQ_OverrideSpawn(edict_t *edict)
 {
-    return PyQ_EntitySpawn(edict, false);
+    return py_override_progs.value;
 }
 
 void PyQ_SupplementSpawn(edict_t *edict)
 {
-    PyQ_EntitySpawn(edict, true);
+    if (PyQ_CallHook("entityspawn", edict, NULL) == -1) {
+        PyErr_Print();
+
+        if (py_strict.value) {
+            Host_Error("Python error");
+        }
+    }
 }
 
 qboolean PyQ_OverrideProgram(func_t function_index)
 {
-    edict_t *self = PROG_TO_EDICT(pr_global_struct->self);
-    edict_t *other = PROG_TO_EDICT(pr_global_struct->other);
-
-    if (function_index == pr_global_struct->StartFrame) {
-        return PyQ_StartFrame(false);
-    }
-    
-    if (function_index == pr_global_struct->PlayerPreThink) {
-        return PyQ_PlayerPreThink(self, false);
-    }
-    
-    if (function_index == pr_global_struct->PlayerPostThink) {
-        return PyQ_PlayerPostThink(self, false);
-    }
-    
-    if (function_index == pr_global_struct->ClientKill) {
-        return PyQ_ClientKill(self, false);
-    }
-    
-    if (function_index == pr_global_struct->ClientConnect) {
-        return PyQ_ClientConnect(self, false);
-    }
-    
-    if (function_index == pr_global_struct->PutClientInServer) {
-        return PyQ_PutClientInServer(self, false);
-    }
-    
-    if (function_index == pr_global_struct->SetNewParms) {
-        return PyQ_SetNewParms(false);
-    }
-
-    if (function_index == pr_global_struct->SetChangeParms) {
-        return PyQ_SetChangeParms(self, false);
-    }
-
-    return false;
+    return py_override_progs.value;
 }
 
 void PyQ_SupplementProgram(func_t function_index)
 {
+    int result = -1;
     edict_t *self = PROG_TO_EDICT(pr_global_struct->self);
     edict_t *other = PROG_TO_EDICT(pr_global_struct->other);
 
     if (function_index == pr_global_struct->StartFrame) {
-        PyQ_StartFrame(true);
-        return;
-    }
-    
-    if (function_index == pr_global_struct->PlayerPreThink) {
-        PyQ_PlayerPreThink(self, true);
-        return;
-    }
-    
-    if (function_index == pr_global_struct->PlayerPostThink) {
-        PyQ_PlayerPostThink(self, true);
-        return;
-    }
-    
-    if (function_index == pr_global_struct->ClientKill) {
-        PyQ_ClientKill(self, true);
-        return;
-    }
-    
-    if (function_index == pr_global_struct->ClientConnect) {
-        PyQ_ClientConnect(self, true);
-        return;
-    }
-    
-    if (function_index == pr_global_struct->PutClientInServer) {
-        PyQ_PutClientInServer(self, true);
-        return;
-    }
-    
-    if (function_index == pr_global_struct->SetNewParms) {
-        PyQ_SetNewParms(true);
-        return;
+        result = PyQ_CallHook("startframe", NULL, NULL);
+    } else if (function_index == pr_global_struct->PlayerPreThink) {
+        result = PyQ_CallHook("playerprethink", self, NULL);
+    } else if (function_index == pr_global_struct->PlayerPostThink) {
+        result = PyQ_CallHook("playerpostthink", self, NULL);
+    } else if (function_index == pr_global_struct->ClientKill) {
+        result = PyQ_CallHook("clientkill", self, NULL);
+    } else if (function_index == pr_global_struct->ClientConnect) {
+        result = PyQ_CallHook("clientconnect", self, NULL);
+    } else if (function_index == pr_global_struct->PutClientInServer) {
+        result = PyQ_CallHook("putclientinserver", self, NULL);
+    } else if (function_index == pr_global_struct->SetNewParms) {
+        result = PyQ_CallHook("setnewparms", NULL, NULL);
+    } else if (function_index == pr_global_struct->SetChangeParms) {
+        result = PyQ_CallHook("setchangeparms", self, NULL);
+    } else {
+        result = 0;
     }
 
-    if (function_index == pr_global_struct->SetChangeParms) {
-        PyQ_SetChangeParms(self, true);
-        return;
+    if (result == -1) {
+        PyErr_Print();
+
+        if (py_strict.value) {
+            Host_Error("PyQ_SupplementProgram: Python error occurred");
+        }
     }
 }
 
 qboolean PyQ_OverrideEntityMethod(int em)
 {
-    edict_t *self = PROG_TO_EDICT(pr_global_struct->self);
-    edict_t *other = PROG_TO_EDICT(pr_global_struct->other);
-
-    if (em == em_touch) {
-        return PyQ_EntityTouch(self, other, false);
-    }
-    
-    if (em == em_think) {
-        return PyQ_EntityThink(self, false);
-    }
-    
-    if (em == em_blocked) {
-        return PyQ_EntityBlocked(self, other, false);
-    }
-
-    return false;
+    return py_override_progs.value;
 }
 
 void PyQ_SupplementEntityMethod(int em)
 {
+    int result = -1;
     edict_t *self = PROG_TO_EDICT(pr_global_struct->self);
     edict_t *other = PROG_TO_EDICT(pr_global_struct->other);
 
     if (em == em_touch) {
-        PyQ_EntityTouch(self, other, true);
-        return;
+        result = PyQ_CallHook("entitytouch", self, other);
+    } else if (em == em_think) {
+        result = PyQ_CallHook("entitythink", self, NULL);
+    } else if (em == em_blocked) {
+        result = PyQ_CallHook("entityblocked", self, other);
+    } else {
+        Host_Error("PyQ_SupplementEntityMethod: unknown method");
     }
-    
-    if (em == em_think) {
-        PyQ_EntityThink(self, true);
-        return;
-    }
-    
-    if (em == em_blocked) {
-        PyQ_EntityBlocked(self, other, true);
-        return;
+
+    if (result == -1) {
+        PyErr_Print();
+
+        if (py_strict.value) {
+            Host_Error("PyQ_SupplementEntityMethod: Python error occurred");
+        }
     }
 }

@@ -21,6 +21,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 //-------------------------------------------------------------------------------
 
+PyObject *PyQ_hooks;
+
+//-------------------------------------------------------------------------------
+
 /**
  * Utility function to emulate Python's print() behaviour.
  */
@@ -2080,6 +2084,12 @@ PyObject *PyQ_quake_init(void)
     cl = PyObject_New(PyQ__cl, &PyQ__cl_type);
 
     if (!cl || PyModule_AddObject(module, "cl", (PyObject *) cl) == -1) {
+        goto error;
+    }
+
+    PyQ_hooks = PyDict_New();
+
+    if (!PyQ_hooks || PyModule_AddObject(module, "hooks", PyQ_hooks) == -1) {
         goto error;
     }
 

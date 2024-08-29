@@ -53,6 +53,10 @@ extern int PyQ_string_storage_size;
 
 //------------------------------------------------------------------------------
 
+extern PyObject *PyQ_hooks;
+
+//------------------------------------------------------------------------------
+
 void PyQ_Init(void);
 void PyQ_Shutdown(void);
 void PyQ_PreServerSpawn(void);
