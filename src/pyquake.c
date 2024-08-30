@@ -303,19 +303,17 @@ static void PyQ_Py_f(void)
  */
 static void PyQ_LoadProgs(void)
 {
-    PyQ_progs = PyQ_ImportModule("pyprogs");
-#if 0
-    if (PyQ_progs) {
-        PyObject *dict = PyObject_GetAttrString(PyQ_progs, "callbacks");
+    PyObject *progs = PyQ_progs
+        ? PyImport_ReloadModule(PyQ_progs)
+        : PyImport_ImportModule("pyprogs");
 
-        if (dict && PyDict_Check(dict)) {
-            PyQ_GetCallbacks(dict);
-        }
-
-        Py_XDECREF(dict);
+    if (!progs) {
+        PyErr_Print();
+        Con_Warning("PyQ_LoadProgs: failed to load 'pyprogs' module\n");
+        return;
     }
-#endif
-    PyQ_CheckError();
+
+    PyQ_progs = progs;
 }
 
 /**
@@ -470,8 +468,6 @@ void PyQ_Init(void)
         Sys_Error("Python error");
     }
 
-    PyQ_LoadProgs();
-
     Cvar_RegisterVariable(&py_strict);
     Cvar_RegisterVariable(&py_override_progs);
     Cmd_AddCommand("py", PyQ_Py_f);
@@ -508,6 +504,8 @@ void PyQ_PreServerSpawn(void)
         PyQ_string_storage = new_string_storage;
         PyQ_string_storage_size = sv.max_edicts;
     }
+
+    PyQ_LoadProgs();
 }
 
 /**
