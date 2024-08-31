@@ -1169,7 +1169,7 @@ Con_RawTabComplete -- tuorqai
 */
 void Con_RawAutoComplete (char const *line)
 {
-	char const *buffer = PyQ_AutoComplete(line, 0);
+	char const *buffer = PyQ_AutoComplete(line);
 
 	if (buffer) {
 		strncpy(&key_lines[edit_line][1], buffer, MAXCMDLINE - 1);
