@@ -1076,10 +1076,18 @@ Con_EnterRawMode -- tuorqai
 */
 void Con_EnterRawMode (void)
 {
+	static qboolean motd_shown = false;
+
 	if (con_mode == con_mode_raw)
 		return;
 
-	Con_Printf("\x02Welcome to Python REPL mode! Press Ctrl-D to exit.\n");
+	if (!motd_shown) {
+		Con_Printf("\x02Welcome to Python REPL mode! Press Ctrl-D to exit.\n");
+		Con_Printf("\x02Press Ctrl-Space for autocompletion.\n");
+
+		motd_shown = true;
+	}
+
 	SZ_Clear(&con_rawbuf);
 
 	key_lines[edit_line][0] = 0x8d;
@@ -1150,6 +1158,24 @@ void Con_RawTab (int length)
 
 	key_linepos = next_key_linepos;
 	key_lines[edit_line][key_linepos] = 0;
+}
+
+int Con_RawAutoCompleteTurn = 0;
+
+/*
+====================
+Con_RawTabComplete -- tuorqai
+====================
+*/
+void Con_RawAutoComplete (char const *line)
+{
+	char const *buffer = PyQ_AutoComplete(line, 0);
+
+	if (buffer) {
+		strncpy(&key_lines[edit_line][1], buffer, MAXCMDLINE - 1);
+		key_linepos = strlen(key_lines[edit_line]);
+		key_blinktime = realtime;
+	}
 }
 
 /*

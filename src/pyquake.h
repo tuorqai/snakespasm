@@ -61,6 +61,7 @@ void PyQ_Init(void);
 void PyQ_Shutdown(void);
 void PyQ_PreServerSpawn(void);
 void PyQ_PostServerSpawn(void);
+char const *PyQ_AutoComplete(char const *line);
 int PyQ_RunBuffer(const char *buffer);
 
 PyObject *PyQ_quake_init(void);

@@ -39,11 +39,15 @@ static PyObject    *PyQ_QuakeConsoleErr_type;
 static PyObject    *PyQ_compile_func;
 static qboolean     PyQ_console_output_set;
 
+static PyObject    *PyQ_quakeutil_complete;
+static char         PyQ_autocomplete_buffer[1024];
+
 //------------------------------------------------------------------------------
 // quakeutil.py
 
 static char const *PyQ_quakeutil_source =
     "import io, codeop, quake\n"
+    "from rlcompleter import Completer\n"
     "\n"
     "class QuakeConsoleOut(io.TextIOBase):\n"
     "    def write(self, str):\n"
@@ -54,7 +58,24 @@ static char const *PyQ_quakeutil_source =
     "        quake.cl.print('\\x02', str, sep='', end='')\n"
     "\n"
     "def compile(source, filename='<input>', symbol='single'):\n"
-    "    return codeop.compile_command(source, filename, symbol)\n";
+    "    return codeop.compile_command(source, filename, symbol)\n"
+    "\n"
+    "def complete(line, context):\n"
+    "    completer = Completer(context)\n"
+    "    lastword = line.split()[-1]\n"
+    "    completions = [completer.complete(lastword, 0)]\n"
+    "    while completions[-1] != None:\n"
+    "        completions.append(completer.complete(lastword, len(completions)))\n"
+    "    completions = completions[:-1]\n"
+    "    if len(completions) == 1:\n"
+    "        s = line.split(' ')\n"
+    "        s[-1] = completions[0]\n"
+    "        return ' '.join(s)\n"
+    "    elif len(completions) > 1:\n"
+    "        quake.cl.print(line, ':', sep='')\n"
+    "        for c in completions:\n"
+    "            quake.cl.print('\\x02', c, sep='  ')\n"
+    "\n";
 
 //------------------------------------------------------------------------------
 
@@ -69,6 +90,28 @@ static void PyQ_CheckError(void)
 
         PyErr_Print();
     }
+}
+
+/**
+* Utility function to copy from PyUnicode object to char buffer.
+*/
+static int PyQ_strncpy(char *dst, PyObject *src, size_t dstlen)
+{
+    int result = -1;
+    PyObject *bytes = PyUnicode_AsUTF8String(src);
+
+    if (bytes) {
+        char const *str = PyBytes_AsString(bytes);
+
+        if (str) {
+            strncpy(dst, str, dstlen);
+            result = 0;
+        }
+
+        Py_DECREF(bytes);
+    }
+
+    return result;
 }
 
 //------------------------------------------------------------------------------
@@ -252,6 +295,57 @@ static PyObject *PyQ_Compile(const char *str)
     }
 
     return NULL;
+}
+
+char const *PyQ_AutoComplete(char const *line)
+{
+    PyObject *str, *result;
+    int copied;
+
+    if (!PyQ_quakeutil_complete) {
+        PyQ_quakeutil_complete = PyObject_GetAttrString(PyQ_quakeutil_module, "complete");
+
+        if (!PyQ_quakeutil_complete) {
+            PyErr_Print();
+            return NULL;
+        }
+    }
+
+    str = PyUnicode_FromString(line);
+    result = NULL;
+
+    if (str) {
+        Py_INCREF(PyQ_globals);
+        PyObject *args = PyTuple_Pack(2, str, PyQ_globals);
+
+        if (args) {
+            result = PyObject_CallObject(PyQ_quakeutil_complete, args);
+            Py_DECREF(args);
+        } else {
+            Py_DECREF(PyQ_globals);
+        }
+    } else {
+        Py_XDECREF(str);
+    }
+
+    if (!result) {
+        PyErr_Print();
+        return NULL;
+    }
+
+    if (Py_IsNone(result)) {
+        return NULL;
+    }
+
+    copied = PyQ_strncpy(PyQ_autocomplete_buffer, result, sizeof(PyQ_autocomplete_buffer));
+    Py_DECREF(result);
+
+    if (copied == -1) {
+        PyErr_Print();
+        return NULL;
+    }
+
+    return PyQ_autocomplete_buffer;
 }
 
 int PyQ_RunBuffer(const char *buffer)

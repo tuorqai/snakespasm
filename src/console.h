@@ -75,6 +75,7 @@ void Con_EnterRawMode (void);
 void Con_ExitRawMode (void);
 void Con_RawBufAddText(const char *text);
 void Con_RawTab (int length);
+void Con_RawAutoComplete (char const *line);
 int Con_RawRepl (char const *line);
 char Con_PromptChar(void);
 

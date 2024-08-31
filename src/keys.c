@@ -281,6 +281,12 @@ void Key_Console (int key)
 			Con_TabComplete ();
 		return;
 
+	case K_SPACE:
+		if (keydown[K_CTRL] && con_mode == con_mode_raw)
+			Con_RawAutoComplete(&key_lines[edit_line][1]);
+
+		return;
+
 	case K_BACKSPACE:
 		key_tabpartial[0] = 0;
 		if (key_linepos > 1)
