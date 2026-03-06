@@ -13,7 +13,7 @@ jobs:
     name: Build
     runs-on: windows-latest
     env:
-      SDL2_VERSION: 2.28.5
+      SDL2_VERSION: 2.32.10
 
     steps:
     - uses: actions/checkout@v3
@@ -37,7 +37,7 @@ jobs:
         Remove-Item -Path "output/.gitignore"
         Get-ChildItem -Path "output" | Compress-Archive -DestinationPath "snakespasm.zip"
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: snakespasm-win64
         path: snakespasm.zip
