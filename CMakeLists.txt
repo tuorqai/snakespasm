@@ -1,8 +1,9 @@
 
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.26)
 project(snakespasm)
 
 option(DO_USERDIRS "Enable user directories support" OFF)
+option(USE_SYSTEM_PYTHON "Use system-vendored Python" OFF)
 option(USE_SDL2 "Enable SDL 2.x" ON)
 option(USE_CODEC_WAVE "Enable WAVE codec" ON)
 option(USE_CODEC_FLAC "Enable FLAC codec" OFF)
@@ -44,16 +45,16 @@ add_executable(${PROJECT_NAME} WIN32
     src/snd_mix.c
     src/snd_mem.c
     src/bgmusic.c
-	src/snd_codec.c
-	src/snd_flac.c
-	src/snd_wave.c
-	src/snd_vorbis.c
-	src/snd_opus.c
-	src/snd_mp3tag.c
-	src/snd_mikmod.c
-	src/snd_modplug.c
-	src/snd_xmp.c
-	src/snd_umx.c
+    src/snd_codec.c
+    src/snd_flac.c
+    src/snd_wave.c
+    src/snd_vorbis.c
+    src/snd_opus.c
+    src/snd_mp3tag.c
+    src/snd_mikmod.c
+    src/snd_modplug.c
+    src/snd_xmp.c
+    src/snd_umx.c
     src/snd_sdl.c
     src/cd_sdl.c
     src/net_dgrm.c
@@ -112,6 +113,12 @@ else()
         src/sys_sdl_unix.c)
 endif()
 
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    C_STANDARD 99
+    C_EXTENSIONS ON
+    BUILD_WITH_INSTALL_RPATH ON
+    INSTALL_RPATH "$ORIGIN/lib")
+
 find_package(OpenGL REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE OpenGL::GL)
 
@@ -120,8 +127,40 @@ if(LIBM)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBM})
 endif()
 
-find_package(Python3 REQUIRED COMPONENTS Development)
-target_link_libraries(${PROJECT_NAME} PRIVATE Python3::Python)
+if(USE_SYSTEM_PYTHON)
+    find_package(Python3 REQUIRED COMPONENTS Development)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Python3::Python)
+else()
+    include(FetchContent)
+
+    set(PYTHON_STANDALONE_DATE "20260303")
+    set(PYTHON_STANDALONE_VERSION "3.14.3")
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+        set(PYTHON_STANDALONE_URL "https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_STANDALONE_DATE}/cpython-${PYTHON_STANDALONE_VERSION}+${PYTHON_STANDALONE_DATE}-x86_64-pc-windows-msvc-install_only_stripped.tar.gz")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set(PYTHON_STANDALONE_URL "https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_STANDALONE_DATE}/cpython-${PYTHON_STANDALONE_VERSION}+${PYTHON_STANDALONE_DATE}-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz")
+    endif()
+
+    message(STATUS "Downloading Python ${PYTHON_STANDALONE_VERSION}...")
+
+    FetchContent_Declare(python_build_standalone URL ${PYTHON_STANDALONE_URL})
+    FetchContent_MakeAvailable(python_build_standalone)
+
+    set(PY_INCLUDE_DIR "${python_build_standalone_SOURCE_DIR}/include/python3.14")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+        set(PY_LIB_PATH "${python_build_standalone_SOURCE_DIR}/libs/python314.lib")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set(PY_LIB_PATH "${python_build_standalone_SOURCE_DIR}/lib/libpython3.14.so")
+    endif()
+
+    add_library(Python::Standalone UNKNOWN IMPORTED)
+    set_target_properties(Python::Standalone PROPERTIES
+        IMPORTED_LOCATION "${PY_LIB_PATH}"
+        INTERFACE_INCLUDE_DIRECTORIES "${PY_INCLUDE_DIR}")
+
+    target_link_libraries(${PROJECT_NAME} PRIVATE Python::Standalone)
+endif()
 
 if(DO_USERDIRS)
     target_compile_definitions(${PROJECT_NAME} PRIVATE DO_USERDIRS)
@@ -222,3 +261,21 @@ endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/runtime")
+
+if(NOT USE_SYSTEM_PYTHON)
+    add_custom_command(TARGET ${PROJECT_NAME}
+        POST_BUILD
+            COMMAND
+                ${CMAKE_COMMAND} -E copy_directory_if_different
+                "${python_build_standalone_SOURCE_DIR}/lib"
+                "${CMAKE_CURRENT_SOURCE_DIR}/runtime/lib")
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+        add_custom_command(TARGET ${PROJECT_NAME}
+            POST_BUILD
+                COMMAND
+                    ${CMAKE_COMMAND} -E copy_if_different
+                    "${python_build_standalone_SOURCE_DIR}/python314.dll"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/runtime")
+    endif()
+endif()
