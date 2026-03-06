@@ -147,10 +147,11 @@ else()
     FetchContent_Declare(python_build_standalone URL ${PYTHON_STANDALONE_URL})
     FetchContent_MakeAvailable(python_build_standalone)
 
-    set(PY_INCLUDE_DIR "${python_build_standalone_SOURCE_DIR}/include/python3.14")
     if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+	    set(PY_INCLUDE_DIR "${python_build_standalone_SOURCE_DIR}/include")
         set(PY_LIB_PATH "${python_build_standalone_SOURCE_DIR}/libs/python314.lib")
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	    set(PY_INCLUDE_DIR "${python_build_standalone_SOURCE_DIR}/include/python3.14")
         set(PY_LIB_PATH "${python_build_standalone_SOURCE_DIR}/lib/libpython3.14.so")
     endif()
 
