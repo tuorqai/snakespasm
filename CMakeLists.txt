@@ -168,7 +168,7 @@ else()
         set(PY_INCLUDE_DIR "${python_build_SOURCE_DIR}/include")
         set(PY_LIB_PATH "${python_build_SOURCE_DIR}/libs/python314.lib")
         install(DIRECTORY "${python_build_SOURCE_DIR}/Lib"
-            DESTINATION "${CMAKE_INSTALL_LIBDIR}/python3.14")
+            DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/Lib")
         install(FILES "${python_build_SOURCE_DIR}/python314.dll" TYPE BIN)
         install(FILES "${python_build_SOURCE_DIR}/vcruntime140.dll" TYPE BIN)
         install(FILES "${python_build_SOURCE_DIR}/vcruntime140_1.dll" TYPE BIN)
