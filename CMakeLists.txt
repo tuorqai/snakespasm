@@ -18,6 +18,12 @@ option(USE_CODEC_UMX "Enable UMX codec" OFF)
 set(MP3LIB "mad" CACHE STRING "MP3 decoding library: mad or mpg123")
 set(VORBISLIB "vorbis" CACHE STRING "Vorbis decoding library: vorbis or tremor")
 
+include(FetchContent)
+include(GNUInstallDirs)
+
+set(CMAKE_INSTALL_BINDIR ".")
+set(CMAKE_INSTALL_LIBDIR "lib")
+
 add_executable(${PROJECT_NAME} WIN32
     src/strlcat.c
     src/strlcpy.c
@@ -94,6 +100,8 @@ add_executable(${PROJECT_NAME} WIN32
     src/pyquake.c
     src/pyq_builtins.c)
 
+install(TARGETS ${PROJECT_NAME})
+
 if(WIN32)
     target_sources(${PROJECT_NAME} PRIVATE
         src/net_win.c
@@ -127,32 +135,49 @@ if(LIBM)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBM})
 endif()
 
+#-------------------------------------------------------------------------------
+# Python
+
 if(USE_SYSTEM_PYTHON)
     find_package(Python3 REQUIRED COMPONENTS Development)
     target_link_libraries(${PROJECT_NAME} PRIVATE Python3::Python)
 else()
-    include(FetchContent)
-
     set(PYTHON_STANDALONE_DATE "20260303")
     set(PYTHON_STANDALONE_VERSION "3.14.3")
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-        set(PYTHON_STANDALONE_URL "https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_STANDALONE_DATE}/cpython-${PYTHON_STANDALONE_VERSION}+${PYTHON_STANDALONE_DATE}-x86_64-pc-windows-msvc-install_only_stripped.tar.gz")
+        if(MSVC)
+            set(PYTHON_STANDALONE_TRIPLE "x86_64-pc-windows-msvc")
+           else()
+               message(FATAL_ERROR "MSVC is the only supported compiler on Windows.")
+           endif()
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        set(PYTHON_STANDALONE_URL "https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_STANDALONE_DATE}/cpython-${PYTHON_STANDALONE_VERSION}+${PYTHON_STANDALONE_DATE}-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz")
+        set(PYTHON_STANDALONE_TRIPLE "x86_64-unknown-linux-gnu")
+    else()
+        message(FATAL_ERROR "Standalone Python build is not supported in this platform: ${CMAKE_SYSTEM_NAME}. Enable USE_SYSTEM_PYTHON and try again.")
     endif()
+
+    set(PYTHON_STANDALONE_URL "https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_STANDALONE_DATE}/cpython-${PYTHON_STANDALONE_VERSION}+${PYTHON_STANDALONE_DATE}-${PYTHON_STANDALONE_TRIPLE}-install_only_stripped.tar.gz")
 
     message(STATUS "Downloading Python ${PYTHON_STANDALONE_VERSION}...")
 
-    FetchContent_Declare(python_build_standalone URL ${PYTHON_STANDALONE_URL})
-    FetchContent_MakeAvailable(python_build_standalone)
+    FetchContent_Declare(python_build URL ${PYTHON_STANDALONE_URL})
+    FetchContent_MakeAvailable(python_build)
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	    set(PY_INCLUDE_DIR "${python_build_standalone_SOURCE_DIR}/include")
-        set(PY_LIB_PATH "${python_build_standalone_SOURCE_DIR}/libs/python314.lib")
+        set(PY_INCLUDE_DIR "${python_build_SOURCE_DIR}/include")
+        set(PY_LIB_PATH "${python_build_SOURCE_DIR}/libs/python314.lib")
+        install(DIRECTORY "${python_build_SOURCE_DIR}/Lib"
+            DESTINATION "${CMAKE_INSTALL_LIBDIR}/python3.14")
+        install(FILES "${python_build_SOURCE_DIR}/python314.dll" TYPE BIN)
+        install(FILES "${python_build_SOURCE_DIR}/vcruntime140.dll" TYPE BIN)
+        install(FILES "${python_build_SOURCE_DIR}/vcruntime140_1.dll" TYPE BIN)
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-	    set(PY_INCLUDE_DIR "${python_build_standalone_SOURCE_DIR}/include/python3.14")
-        set(PY_LIB_PATH "${python_build_standalone_SOURCE_DIR}/lib/libpython3.14.so")
+        set(PY_INCLUDE_DIR "${python_build_SOURCE_DIR}/include/python3.14")
+        set(PY_LIB_PATH "${python_build_SOURCE_DIR}/lib/libpython3.14.so")
+        install(DIRECTORY "${python_build_SOURCE_DIR}/lib/python3.14" TYPE LIB)
+        install(FILES "${python_build_SOURCE_DIR}/lib/libpython3.14.so.1.0" TYPE LIB)
+        install(FILES "${python_build_SOURCE_DIR}/lib/libpython3.14.so" TYPE LIB)
     endif()
 
     add_library(Python::Standalone UNKNOWN IMPORTED)
@@ -256,27 +281,4 @@ endif()
 
 if(MSVC)
     target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
-endif()
-
-# Copy everything to 'runtime' directory
-
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/runtime")
-
-if(NOT USE_SYSTEM_PYTHON)
-    add_custom_command(TARGET ${PROJECT_NAME}
-        POST_BUILD
-            COMMAND
-                ${CMAKE_COMMAND} -E copy_directory_if_different
-                "${python_build_standalone_SOURCE_DIR}/lib"
-                "${CMAKE_CURRENT_SOURCE_DIR}/runtime/lib")
-
-    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-        add_custom_command(TARGET ${PROJECT_NAME}
-            POST_BUILD
-                COMMAND
-                    ${CMAKE_COMMAND} -E copy_if_different
-                    "${python_build_standalone_SOURCE_DIR}/python314.dll"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/runtime")
-    endif()
 endif()
