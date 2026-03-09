@@ -1,8 +1,9 @@
 
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.26)
 project(snakespasm)
 
 option(DO_USERDIRS "Enable user directories support" OFF)
+option(USE_SYSTEM_PYTHON "Use system-vendored Python" OFF)
 option(USE_SDL2 "Enable SDL 2.x" ON)
 option(USE_CODEC_WAVE "Enable WAVE codec" ON)
 option(USE_CODEC_FLAC "Enable FLAC codec" OFF)
@@ -16,6 +17,12 @@ option(USE_CODEC_UMX "Enable UMX codec" OFF)
 
 set(MP3LIB "mad" CACHE STRING "MP3 decoding library: mad or mpg123")
 set(VORBISLIB "vorbis" CACHE STRING "Vorbis decoding library: vorbis or tremor")
+
+include(FetchContent)
+include(GNUInstallDirs)
+
+set(CMAKE_INSTALL_BINDIR ".")
+set(CMAKE_INSTALL_LIBDIR "lib")
 
 add_executable(${PROJECT_NAME} WIN32
     src/strlcat.c
@@ -44,16 +51,16 @@ add_executable(${PROJECT_NAME} WIN32
     src/snd_mix.c
     src/snd_mem.c
     src/bgmusic.c
-	src/snd_codec.c
-	src/snd_flac.c
-	src/snd_wave.c
-	src/snd_vorbis.c
-	src/snd_opus.c
-	src/snd_mp3tag.c
-	src/snd_mikmod.c
-	src/snd_modplug.c
-	src/snd_xmp.c
-	src/snd_umx.c
+    src/snd_codec.c
+    src/snd_flac.c
+    src/snd_wave.c
+    src/snd_vorbis.c
+    src/snd_opus.c
+    src/snd_mp3tag.c
+    src/snd_mikmod.c
+    src/snd_modplug.c
+    src/snd_xmp.c
+    src/snd_umx.c
     src/snd_sdl.c
     src/cd_sdl.c
     src/net_dgrm.c
@@ -93,6 +100,8 @@ add_executable(${PROJECT_NAME} WIN32
     src/pyquake.c
     src/pyq_builtins.c)
 
+install(TARGETS ${PROJECT_NAME})
+
 if(WIN32)
     target_sources(${PROJECT_NAME} PRIVATE
         src/net_win.c
@@ -112,6 +121,12 @@ else()
         src/sys_sdl_unix.c)
 endif()
 
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    C_STANDARD 99
+    C_EXTENSIONS ON
+    BUILD_WITH_INSTALL_RPATH ON
+    INSTALL_RPATH "$ORIGIN/lib")
+
 find_package(OpenGL REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE OpenGL::GL)
 
@@ -120,8 +135,57 @@ if(LIBM)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBM})
 endif()
 
-find_package(Python3 REQUIRED COMPONENTS Development)
-target_link_libraries(${PROJECT_NAME} PRIVATE Python3::Python)
+#-------------------------------------------------------------------------------
+# Python
+
+if(USE_SYSTEM_PYTHON)
+    find_package(Python3 REQUIRED COMPONENTS Development)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Python3::Python)
+else()
+    set(PYTHON_STANDALONE_DATE "20260303")
+    set(PYTHON_STANDALONE_VERSION "3.14.3")
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+        if(MSVC)
+            set(PYTHON_STANDALONE_TRIPLE "x86_64-pc-windows-msvc")
+           else()
+               message(FATAL_ERROR "MSVC is the only supported compiler on Windows.")
+           endif()
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set(PYTHON_STANDALONE_TRIPLE "x86_64-unknown-linux-gnu")
+    else()
+        message(FATAL_ERROR "Standalone Python build is not supported in this platform: ${CMAKE_SYSTEM_NAME}. Enable USE_SYSTEM_PYTHON and try again.")
+    endif()
+
+    set(PYTHON_STANDALONE_URL "https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_STANDALONE_DATE}/cpython-${PYTHON_STANDALONE_VERSION}+${PYTHON_STANDALONE_DATE}-${PYTHON_STANDALONE_TRIPLE}-install_only_stripped.tar.gz")
+
+    message(STATUS "Downloading Python ${PYTHON_STANDALONE_VERSION}...")
+
+    FetchContent_Declare(python_build URL ${PYTHON_STANDALONE_URL})
+    FetchContent_MakeAvailable(python_build)
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+        set(PY_INCLUDE_DIR "${python_build_SOURCE_DIR}/include")
+        set(PY_LIB_PATH "${python_build_SOURCE_DIR}/libs/python314.lib")
+        install(DIRECTORY "${python_build_SOURCE_DIR}/Lib/" DESTINATION "./Lib/")
+        install(FILES "${python_build_SOURCE_DIR}/python314.dll" TYPE BIN)
+        install(FILES "${python_build_SOURCE_DIR}/vcruntime140.dll" TYPE BIN)
+        install(FILES "${python_build_SOURCE_DIR}/vcruntime140_1.dll" TYPE BIN)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set(PY_INCLUDE_DIR "${python_build_SOURCE_DIR}/include/python3.14")
+        set(PY_LIB_PATH "${python_build_SOURCE_DIR}/lib/libpython3.14.so")
+        install(DIRECTORY "${python_build_SOURCE_DIR}/lib/python3.14" TYPE LIB)
+        install(FILES "${python_build_SOURCE_DIR}/lib/libpython3.14.so.1.0" TYPE LIB)
+        install(FILES "${python_build_SOURCE_DIR}/lib/libpython3.14.so" TYPE LIB)
+    endif()
+
+    add_library(Python::Standalone UNKNOWN IMPORTED)
+    set_target_properties(Python::Standalone PROPERTIES
+        IMPORTED_LOCATION "${PY_LIB_PATH}"
+        INTERFACE_INCLUDE_DIRECTORIES "${PY_INCLUDE_DIR}")
+
+    target_link_libraries(${PROJECT_NAME} PRIVATE Python::Standalone)
+endif()
 
 if(DO_USERDIRS)
     target_compile_definitions(${PROJECT_NAME} PRIVATE DO_USERDIRS)
@@ -217,8 +281,3 @@ endif()
 if(MSVC)
     target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
-
-# Copy everything to 'runtime' directory
-
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/runtime")
