@@ -34,7 +34,6 @@ jobs:
 
     - name: Create redistributable package
       run: |
-        New-Item -Path . -Name "output" -ItemType "directory"
         Get-ChildItem -Path "SDL2-$env:SDL2_VERSION/lib/x64/SDL2.dll" | Copy-Item -Destination "output"
         Get-ChildItem -Path "runtime" | Copy-Item -Destination "output" -Recurse
         Remove-Item -Path "output/.gitignore"
