@@ -28,6 +28,10 @@ jobs:
         cmake -B build -A x64 -DSDL2_ROOT="SDL2-$env:SDL2_VERSION"
         cmake --build build --config Release
 
+    - name: Install
+      run: |
+        cmake --install build --prefix output
+
     - name: Create redistributable package
       run: |
         New-Item -Path . -Name "output" -ItemType "directory"
