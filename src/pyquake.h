@@ -64,8 +64,6 @@ void PyQ_PostServerSpawn(void);
 char const *PyQ_AutoComplete(char const *line);
 int PyQ_RunBuffer(const char *buffer);
 
-PyObject *PyQ_quake_init(void);
-
 // Called from ED_LoadFromFile() in pr_edict.c
 // prevents QuakeC spawn function lookup and execution if returns true
 qboolean PyQ_OverrideSpawn(edict_t *edict);

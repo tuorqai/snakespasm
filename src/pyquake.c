@@ -29,33 +29,106 @@ int                 PyQ_string_storage_size;
 cvar_t              py_strict = { "py_strict", "1", CVAR_ARCHIVE };
 cvar_t              py_override_progs = { "py_override_progs", "0", CVAR_ARCHIVE };
 
-static PyObject    *PyQ_main;
-static PyObject    *PyQ_progs;
-static PyObject    *PyQ_globals;
-static PyObject    *PyQ_locals;
-static PyObject    *PyQ_quakeutil_module;
-static PyObject    *PyQ_QuakeConsoleOut_type;
-static PyObject    *PyQ_QuakeConsoleErr_type;
-static PyObject    *PyQ_compile_func;
-static qboolean     PyQ_console_output_set;
+static PyObject     *PyQ_globals;
 
-static PyObject    *PyQ_quakeutil_complete;
 static char         PyQ_autocomplete_buffer[1024];
 
 //------------------------------------------------------------------------------
-// quakeutil.py
+// engineglue: basic glue module
 
-static char const *PyQ_quakeutil_source =
-    "import io, codeop, quake\n"
+static PyObject *PyQ_engineglue_module;
+static PyObject *PyQ_engineglue_compile_f;
+static PyObject *PyQ_engineglue_complete_f;
+
+/**
+ * engineglue._con_write(str, colored=False)
+ * Outputs a string to the Quake console.
+ * The string should not exceed 1024 chars.
+ */
+static PyObject *PyQ_engineglue__con_write(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    char const *str;
+    int colored = 0;
+
+    char *kwlist[] = { "str", "colored", NULL };
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|p", kwlist, &str, &colored)) {
+        return NULL;
+    }
+
+    if (colored) {
+        Con_Printf("%c%s", 2, str);
+    } else {
+        Con_Printf("%s", str);
+    }
+
+    Py_RETURN_NONE;
+}
+
+static PyObject *PyQ_engineglue__chdir(PyObject *self, PyObject *args)
+{
+    PyErr_SetString(PyExc_RuntimeError, "changing directories is not allowed");
+    return NULL;
+}
+
+static PyObject *PyQ_engineglue__popen(PyObject *self, PyObject *args)
+{
+    PyErr_SetString(PyExc_RuntimeError, "no pipes save lives");
+    return NULL;
+}
+
+static PyObject *PyQ_engineglue__system(PyObject *self, PyObject *args)
+{
+    PyErr_SetString(PyExc_RuntimeError, "calling external processes is not allowed");
+    return NULL;
+}
+
+static PyMethodDef PyQ_engineglue_methods[] = {
+    { "_con_write",     (PyCFunction) PyQ_engineglue__con_write,    METH_VARARGS | METH_KEYWORDS },
+    { "_chdir",         PyQ_engineglue__chdir,                      METH_VARARGS },
+    { "_popen",         PyQ_engineglue__popen,                      METH_VARARGS },
+    { "_system",        PyQ_engineglue__system,                     METH_VARARGS },
+    { NULL },
+};
+
+static PyModuleDef PyQ_engineglue_moddef = {
+    PyModuleDef_HEAD_INIT,
+    "engineglue",                   // m_name
+    NULL,                           // m_doc
+    -1,                             // m_size
+    PyQ_engineglue_methods,         // m_methods
+    NULL,                           // m_slots
+    NULL,                           // m_traverse
+    NULL,                           // m_clear
+    NULL,                           // m_free
+};
+
+/**
+ * Portion of engineglue written in Python
+ */
+static char const *PyQ_engineglue_pycode =
+    "import io, codeop, os, sys\n"
     "from rlcompleter import Completer\n"
     "\n"
-    "class QuakeConsoleOut(io.TextIOBase):\n"
+    "class ConsoleOutput(io.TextIOBase):\n"
+    "    def __init__(self, colored=False, chunk_size=1024):\n"
+    "        self.colored = colored\n"
+    "        self.chunk_size = chunk_size\n"
     "    def write(self, str):\n"
-    "        quake.cl.print(str, end='')\n"
+    "        for i in range(0, len(str), self.chunk_size):\n"
+    "            _con_write(str[i:i + self.chunk_size], self.colored)\n"
+    "    def isatty(self):\n"
+    "        return False\n"
     "\n"
-    "class QuakeConsoleErr(io.TextIOBase):\n"
-    "    def write(self, str):\n"
-    "        quake.cl.print('\\x02', str, sep='', end='')\n"
+    "def _setup_glue(basedir, gamedir):\n"
+    "    os.chdir = _chdir\n"
+    "    os.popen = _popen\n"
+    "    os.system = _system\n"
+    "    sys.stdin = None\n"
+    "    sys.stdout = ConsoleOutput(colored=False)\n"
+    "    sys.stderr = ConsoleOutput(colored=True)\n"
+    "    sys.path.insert(0, f'{basedir}/scripts')\n"
+    "    sys.path.insert(0, f'{gamedir}/scripts')\n"
     "\n"
     "def compile(source, filename='<input>', symbol='single'):\n"
     "    return codeop.compile_command(source, filename, symbol)\n"
@@ -72,25 +145,166 @@ static char const *PyQ_quakeutil_source =
     "        s[-1] = completions[0]\n"
     "        return ' '.join(s)\n"
     "    elif len(completions) > 1:\n"
-    "        quake.cl.print(line, ':', sep='')\n"
+    "        print(line, ':', sep='')\n"
     "        for c in completions:\n"
-    "            quake.cl.print('\\x02', c, sep='  ')\n"
+    "            print('\\x02', c, sep='  ')\n"
     "\n";
 
-//------------------------------------------------------------------------------
-
-static void PyQ_CheckError(void)
+PyObject *PyQ_engineglue_init(void)
 {
-    PyObject *type = PyErr_Occurred();
+    PyObject *module;
+    PyObject *dict;
+    PyObject *pycode_result;
+    qboolean is_pycode_compiled;
+    PyObject *setup_glue_f;
+    PyObject *setup_glue_args;
+    PyObject *setup_glue_result;
+    qboolean is_setup_glue_failed;
 
-    if (type) {
-        if (!PyQ_console_output_set) {
-            Con_Printf("Python error occurred, but console output is not captured.\n");
-        }
+    module = PyModule_Create(&PyQ_engineglue_moddef);
 
-        PyErr_Print();
+    if (!module) {
+        return NULL;
     }
+
+    dict = PyModule_GetDict(module);
+
+    if (!dict) {
+        goto error;
+    }
+
+    pycode_result = PyRun_String(PyQ_engineglue_pycode, Py_file_input, dict, dict);
+    is_pycode_compiled = pycode_result ? true : false;
+
+    Py_XDECREF(pycode_result);
+
+    if (!is_pycode_compiled) {
+        goto error;
+    }
+
+    setup_glue_f = PyObject_GetAttrString(module, "_setup_glue");
+    setup_glue_args = Py_BuildValue("(ss)", com_basedir, com_gamedir);
+    setup_glue_result = PyObject_CallObject(setup_glue_f, setup_glue_args);
+    is_setup_glue_failed = (setup_glue_result == NULL);
+
+    Py_XDECREF(setup_glue_args);
+    Py_XDECREF(setup_glue_result);
+
+    if (is_setup_glue_failed) {
+        goto error;
+    }
+
+    Py_DECREF(setup_glue_result);
+
+    PyQ_engineglue_compile_f = PyObject_GetAttrString(module, "compile");
+    PyQ_engineglue_complete_f = PyObject_GetAttrString(module, "complete");
+
+    if (!PyQ_engineglue_compile_f || !PyQ_engineglue_complete_f) {
+        goto error;
+    }
+
+    return module;
+
+error:
+    Py_XDECREF(dict);
+    Py_DECREF(module);
+
+    return NULL;
 }
+
+//------------------------------------------------------------------------------
+// quake: this module exposes the engine data to Python
+
+static PyObject *PyQ_quake_module;
+static PyObject *PyQ_quake_call_hook_f;
+
+static PyMethodDef PyQ_quake_methods[] = {
+    { NULL },
+};
+
+static PyModuleDef PyQ_quake_moddef = {
+    PyModuleDef_HEAD_INIT,
+    "quake",                        // m_name
+    NULL,                           // m_doc
+    -1,                             // m_size
+    PyQ_quake_methods,              // m_methods
+    NULL,                           // m_slots
+    NULL,                           // m_traverse
+    NULL,                           // m_clear
+    NULL,                           // m_free
+};
+
+static char const *PyQ_quake_pycode =
+    "hooks = {\n"
+    "    'serverspawn': [],\n"
+    "    'entityspawn': [],\n"
+    "    'entitytouch': [],\n"
+    "    'entitythink': [],\n"
+    "    'entityblocked': [],\n"
+    "    'startframe': [],\n"
+    "    'playerprethink': [],\n"
+    "    'playerpostthink': [],\n"
+    "    'clientkill': [],\n"
+    "    'clientconnect': [],\n"
+    "    'putclientinserver': [],\n"
+    "    'setnewparms': [],\n"
+    "    'setchangeparms': [],\n"
+    "}\n"
+    "\n"
+    "def call_hook(name, *args):\n"
+    "    for h in hooks[name]:\n"
+    "        try:\n"
+    "            h(*args)\n"
+    "        except Exception:\n"
+    "            print(f'The hook {h} failed to run and was removed.')\n"
+    "            hooks[name].remove(h)\n"
+    "\n";
+
+static PyObject *PyQ_quake_init(void)
+{
+    PyObject *module;
+    PyObject *dict;
+    PyObject *pycode_result;
+    qboolean is_pycode_compiled;
+
+    module = PyModule_Create(&PyQ_quake_moddef);
+
+    if (!module) {
+        return NULL;
+    }
+
+    dict = PyModule_GetDict(module);
+
+    if (!dict) {
+        goto error;
+    }
+
+    pycode_result = PyRun_String(PyQ_quake_pycode, Py_file_input, dict, dict);
+    is_pycode_compiled = pycode_result ? true : false;
+
+    Py_XDECREF(pycode_result);
+
+    if (!is_pycode_compiled) {
+        goto error;
+    }
+
+    PyQ_hooks = PyObject_GetAttrString(module, "hooks");
+    PyQ_quake_call_hook_f = PyObject_GetAttrString(module, "call_hook");
+
+    if (!PyQ_hooks || !PyQ_quake_call_hook_f) {
+        goto error;
+    }
+
+    return module;
+
+error:
+    Py_XDECREF(PyQ_hooks);
+    Py_DECREF(module);
+
+    return NULL;
+}
+
+//------------------------------------------------------------------------------
 
 /**
 * Utility function to copy from PyUnicode object to char buffer.
@@ -119,34 +333,6 @@ static int PyQ_strncpy(char *dst, PyObject *src, size_t dstlen)
 
 static int PyQ_InitHooks(void)
 {
-    int i;
-
-    char const *hooknames[] = {
-        "serverspawn", "entityspawn", "entitytouch", "entitythink",
-        "entityblocked", "startframe", "playerprethink", "playerpostthink",
-        "clientkill", "clientconnect", "putclientinserver", "setnewparms",
-        "setchangeparms",
-    };
-
-    // PyQ_hooks is a dictionary object which is initialized during the 'quake'
-    // module initialization.
-
-    if (!PyQ_hooks) {
-        // an exceptional case
-        return -1;
-    }
-
-    for (i = 0; i < sizeof(hooknames) / sizeof(*hooknames); i++) {
-        PyObject *emptylist = PyList_New(0);
-
-        if (!emptylist) {
-            // another exceptional case
-            return -1;
-        }
-
-        PyDict_SetItemString(PyQ_hooks, hooknames[i], emptylist);
-    }
-
     return 0;
 }
 
@@ -209,66 +395,98 @@ static int PyQ_HookArgs(PyObject **pargs, edict_t *qedict1, edict_t *qedict2)
 
 static int PyQ_CallHook(char const *name, edict_t *qedict1, edict_t *qedict2)
 {
-    PyObject *item, *args;
+    PyObject *args;
+    PyObject *result;
+    qboolean is_failed;
 
-    item = PyDict_GetItemString(PyQ_hooks, name);
-
-    if (!item) {
-        return -1;
-    }
-
+#if 0
     if (PyQ_HookArgs(&args, qedict1, qedict2) == -1) {
         return -1;
     }
+#endif
 
-    if (PyList_Check(item)) {
-        // Is this a list? (normal situation)
-        Py_ssize_t i, len = PyList_GET_SIZE(item);
+    args = Py_BuildValue("(s)", name);
+    result = PyObject_CallObject(PyQ_quake_call_hook_f, args);
+    is_failed = (result == NULL);
 
-        for (i = 0; i < len; i++) {
-            PyObject *listitem = PyList_GET_ITEM(item, i);
+    Py_XDECREF(result);
+    Py_XDECREF(args);
 
-            if (!PyObject_CallObject(listitem, args)) {
-                Py_XDECREF(args);
-                return -1;
-            }
-        }
-    } else if (PyCallable_Check(item)) {
-        // If it's not a list... is it callable?
-        if (!PyObject_CallObject(item, args)) {
-            Py_XDECREF(args);
-            return -1;
-        }
-    } else {
-        // User is an idiot and/or fucked up, tell them.
-        PyErr_SetString(PyExc_RuntimeError, "hook is neither a list nor callable\n");
-        Py_XDECREF(args);
+    if (is_failed) {
         return -1;
     }
-
-    Py_XDECREF(args);
 
     return 0;
 }
 
 //------------------------------------------------------------------------------
 
-static PyObject *PyQ_ImportModule(char const *name)
+static qboolean PyQ_LoadSingleScript(PyObject *mScript)
 {
-    PyObject *unicode = PyUnicode_DecodeFSDefault(name); /* new reference */
+    qboolean isSucceeded = false;
+    PyObject *fOnLoad = PyObject_GetAttrString(mScript, "on_load");
 
-    if (unicode) {
-        PyObject *module = PyImport_Import(unicode); /* new reference */
-        Py_DECREF(unicode);
+    if (fOnLoad && PyCallable_Check(fOnLoad)) {
+        PyObject *result = PyObject_CallNoArgs(fOnLoad);
+        isSucceeded = (result != NULL);
+        Py_XDECREF(result);
+    }
 
-        if (module) {
-            Con_Printf("PyQ_ImportModule: imported module \"%s\"\n", name);
-            return module;
+    Py_XDECREF(fOnLoad);
+    return isSucceeded;
+}
+
+static qboolean PyQ_LoadScripts(void)
+{
+    PyObject *mConfig = PyImport_ImportModule("config");
+
+    if (!mConfig) {
+        PyErr_Print();
+        return false;
+    }
+
+    PyObject *aScripts = PyObject_GetAttrString(mConfig, "scripts");
+
+    if (aScripts && PyList_Check(aScripts)) {
+        Py_ssize_t size = PyList_Size(aScripts);
+
+        for (Py_ssize_t i = 0; i < size; i++) {
+            PyObject *sScriptName = PyList_GetItem(aScripts, i);
+            char const *scriptName = PyUnicode_AsUTF8(sScriptName);
+            PyObject *mScript = PyImport_ImportModule(scriptName);
+
+            if (mScript && PyQ_LoadSingleScript(mScript)) {
+                Con_Printf("[Python] Loaded script: %s\n", scriptName);
+            } else {
+                Con_Printf("[Python] Failed to load script: %s\n", scriptName);
+                PyErr_Print();
+            }
         }
     }
 
-    PyQ_CheckError();
-    return NULL;
+    Py_XDECREF(aScripts);
+    Py_DECREF(mConfig);
+
+    return true;
+}
+
+static qboolean PyQ_ClearGlobals(void)
+{
+    if (PyQ_globals) {
+        Py_DECREF(PyQ_globals);
+    }
+
+    PyQ_globals = Py_BuildValue("{}");
+
+    if (!PyQ_globals) {
+        return false;
+    }
+
+    PyDict_SetItemString(PyQ_globals, "__name__", PyUnicode_FromString("__main__"));
+    PyDict_SetItemString(PyQ_globals, "__builtins__", PyEval_GetBuiltins());
+    PyDict_SetItemString(PyQ_globals, "quake", PyQ_quake_module);
+
+    return true;
 }
 
 static PyObject *PyQ_Compile(const char *str)
@@ -286,7 +504,7 @@ static PyObject *PyQ_Compile(const char *str)
     PyObject *args = Py_BuildValue("(s)", str);
 
     if (args) {
-        PyObject *code = PyObject_Call(PyQ_compile_func, args, NULL);
+        PyObject *code = PyObject_Call(PyQ_engineglue_compile_f, args, NULL);
         Py_DECREF(args);
 
         if (code) {
@@ -302,13 +520,8 @@ char const *PyQ_AutoComplete(char const *line)
     PyObject *str, *result;
     int copied;
 
-    if (!PyQ_quakeutil_complete) {
-        PyQ_quakeutil_complete = PyObject_GetAttrString(PyQ_quakeutil_module, "complete");
-
-        if (!PyQ_quakeutil_complete) {
-            PyErr_Print();
-            return NULL;
-        }
+    if (!PyQ_engineglue_complete_f) {
+        return NULL;
     }
 
     str = PyUnicode_FromString(line);
@@ -319,7 +532,7 @@ char const *PyQ_AutoComplete(char const *line)
         PyObject *args = PyTuple_Pack(2, str, PyQ_globals);
 
         if (args) {
-            result = PyObject_CallObject(PyQ_quakeutil_complete, args);
+            result = PyObject_CallObject(PyQ_engineglue_complete_f, args);
             Py_DECREF(args);
         } else {
             Py_DECREF(PyQ_globals);
@@ -350,28 +563,33 @@ char const *PyQ_AutoComplete(char const *line)
 
 int PyQ_RunBuffer(const char *buffer)
 {
-    qboolean error = false;
     PyObject *code = PyQ_Compile(buffer);
+    PyObject *result;
+    qboolean is_success;
 
-    if (code) {
-        PyObject *object;
+    if (!code) {
+        return -1;
+    }
 
-        if (Py_IsNone(code)) {
-            return 1;
-        }
+    if (Py_IsNone(code)) {
+        return 1;
+    }
 
-        object = PyEval_EvalCode(code, PyQ_globals, PyQ_locals);
+    result = PyEval_EvalCode(code, PyQ_globals, PyQ_globals);
+    is_success = result ? true : false;
 
-        if (object) {
-            Py_DECREF(object);
+    Py_XDECREF(result);
+
+    if (PyErr_Occurred()) {
+        if (PyErr_ExceptionMatches(PyExc_SystemExit)) {
+            PyErr_Clear();
+            Con_Printf("%cSorry, exit is disabled. Use Ctrl-D to exit from REPL and the console command 'quit' to exit properly.\n", 2);
         } else {
-            error = true;
+            PyErr_Print();
         }
     }
 
-    PyQ_CheckError();
-
-    return error ? -1 : 0;
+    return is_success ? 0 : -1;
 }
 
 /**
@@ -393,128 +611,11 @@ static void PyQ_Py_f(void)
 }
 
 /**
- * Imports 'pyprogs' module/package.
- */
-static void PyQ_LoadProgs(void)
-{
-    PyObject *progs = PyQ_progs
-        ? PyImport_ReloadModule(PyQ_progs)
-        : PyImport_ImportModule("pyprogs");
-
-    if (!progs) {
-        PyErr_Print();
-        Con_Warning("PyQ_LoadProgs: failed to load 'pyprogs' module\n");
-        return;
-    }
-
-    PyQ_progs = progs;
-}
-
-/**
  * "py_clear" console command.
  */
 static void PyQ_PyClear_f(void)
 {
-    int i;
-
-    Py_XDECREF(PyQ_globals);
-
-    PyQ_globals = Py_BuildValue("{}");
-    PyQ_locals = PyQ_globals;
-}
-
-/**
- * Insert path to the beginning of the module path list.
- */
-static void PyQ_InsertModulePath(char const *path)
-{
-    PyObject *list = PySys_GetObject("path");
-    PyObject *unicode = PyUnicode_DecodeFSDefault(path);
-
-    if (list && unicode) {
-        if (PyList_Insert(list, 0, unicode) == 0) {
-            Con_Printf("PyQ_InsertModulePath: inserted \"%s\" to sys.path\n", path);
-        }
-    }
-
-    Py_XDECREF(unicode);
-    PyQ_CheckError();
-}
-
-static int PyQ_RedirectOutput(char const *name, PyObject *type)
-{
-    PyObject *instance;
-
-    if (type) {
-        instance = PyObject_CallNoArgs(type);
-        Py_DECREF(type);
-
-        if (instance) {
-            if (PySys_SetObject(name, instance) == 0) {
-                return 0;
-            }
-
-            Py_DECREF(instance);
-        }
-    }
-
-    return -1;
-}
-
-static int PyQ_SetupConsoleOutput(void)
-{
-    int status = -1;
-
-    PyObject *out = PyObject_CallNoArgs(PyQ_QuakeConsoleOut_type);
-    PyObject *err = PyObject_CallNoArgs(PyQ_QuakeConsoleErr_type);
-
-    if (out && err) {
-        status = 0;
-
-        if (PySys_SetObject("stdout", out) == -1) {
-            status = -1;
-        }
-
-        if (PySys_SetObject("stderr", err) == -1) {
-            status = -1;
-        }
-    }
-
-    Py_XDECREF(err);
-    Py_XDECREF(out);
-
-    PyQ_CheckError();
-    return status;
-}
-
-static int PyQ_InitQuakeUtil(void)
-{
-    PyObject *code = Py_CompileString(PyQ_quakeutil_source, "quakeutil.py", Py_file_input);
-
-    if (code) {
-        PyObject *module = PyImport_ExecCodeModule("quakeutil", code);
-
-        if (module) {
-            PyQ_quakeutil_module = module;
-
-            PyQ_QuakeConsoleOut_type = PyObject_GetAttrString(PyQ_quakeutil_module, "QuakeConsoleOut");
-            PyQ_QuakeConsoleErr_type = PyObject_GetAttrString(PyQ_quakeutil_module, "QuakeConsoleErr");
-            PyQ_compile_func = PyObject_GetAttrString(PyQ_quakeutil_module, "compile");
-
-            if (PyQ_QuakeConsoleOut_type && PyQ_QuakeConsoleErr_type && PyQ_compile_func) {
-                return 0;
-            }
-
-            Py_XDECREF(PyQ_compile_func);
-            Py_XDECREF(PyQ_QuakeConsoleErr_type);
-            Py_XDECREF(PyQ_QuakeConsoleOut_type);
-        }
-
-        Py_DECREF(code);
-    }
-
-    PyQ_CheckError();
-    return -1;
+    PyQ_ClearGlobals();
 }
 
 /**
@@ -528,6 +629,7 @@ void PyQ_Init(void)
     PyConfig_InitIsolatedConfig(&config);
     PyConfig_SetBytesString(&config, &config.program_name, host_parms->argv[0]);
 
+    PyImport_AppendInittab("engineglue", &PyQ_engineglue_init);
     PyImport_AppendInittab("quake", &PyQ_quake_init);
 
     status = Py_InitializeFromConfig(&config);
@@ -540,26 +642,16 @@ void PyQ_Init(void)
         }
     }
 
-    PyQ_InsertModulePath(com_basedir);
-    PyQ_InsertModulePath(com_gamedir);
+    PyQ_engineglue_module = PyImport_ImportModule("engineglue");
+    PyQ_quake_module = PyImport_ImportModule("quake");
 
-    PyQ_main = PyImport_AddModule("__main__");
-
-    PyQ_globals = Py_BuildValue("{}"); // was PyModule_GetDict(PyQ_main)
-    PyQ_locals = PyQ_globals;
-
-    if (PyQ_InitQuakeUtil() == 0) {
-        if (PyQ_SetupConsoleOutput() == 0) {
-            PyQ_console_output_set = true;
-        } else {
-            Con_Printf("PyQ_Init: output from Python is not captured\n");
-        }
-    } else {
-        Con_Printf("PyQ_InitQuakeUtil() failed");
+    if (!PyQ_LoadScripts()) {
+        Sys_Error("Python error: can't load scripts");
     }
 
-    if (PyQ_InitHooks() == -1) {
-        Sys_Error("Python error");
+    // This is for REPL only
+    if (!PyQ_ClearGlobals()) {
+        Sys_Error("Python error: can't create globals dict");
     }
 
     Cvar_RegisterVariable(&py_strict);
@@ -598,8 +690,6 @@ void PyQ_PreServerSpawn(void)
         PyQ_string_storage = new_string_storage;
         PyQ_string_storage_size = sv.max_edicts;
     }
-
-    PyQ_LoadProgs();
 }
 
 /**
@@ -706,3 +796,4 @@ void PyQ_SupplementEntityMethod(int em)
         }
     }
 }
+

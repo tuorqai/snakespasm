@@ -1966,7 +1966,7 @@ struct PyQ_namevalue
     int value;
 };
 
-PyObject *PyQ_quake_init(void)
+PyObject *PyQ_quake_init2(void)
 {
     PyObject *module;
 
