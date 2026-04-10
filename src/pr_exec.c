@@ -369,10 +369,7 @@ void PR_ExecuteProgram (func_t fnum)
 		Host_Error ("PR_ExecuteProgram: NULL function");
 	}
 
-	// tuorqai: is this function overridden by Python script???
-	if (PyQ_OverrideProgram (fnum)) {
-		return;
-	}
+	PyQ_OnProgramCall (fnum);
 
 	f = &pr_functions[fnum];
 
@@ -636,8 +633,7 @@ void PR_ExecuteProgram (func_t fnum)
 		st = &pr_statements[PR_LeaveFunction()];
 		if (pr_depth == exitdepth)
 		{ // Done
-			// tuorqai: call 'after*' Python callback
-			PyQ_SupplementProgram (fnum);
+			PyQ_PostProgramCall (fnum);
 			return;
 		}
 		break;

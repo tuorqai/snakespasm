@@ -64,29 +64,17 @@ void PyQ_PostServerSpawn(void);
 char const *PyQ_AutoComplete(char const *line);
 int PyQ_RunBuffer(const char *buffer);
 
-// Called from ED_LoadFromFile() in pr_edict.c
-// prevents QuakeC spawn function lookup and execution if returns true
-qboolean PyQ_OverrideSpawn(edict_t *edict);
+void PyQ_OnProgramCall(func_t function_index);
+void PyQ_PostProgramCall(func_t function_index);
 
-// Called from ED_LoadFromFile() in pr_edict.c after QuakeC spawn function executed
-void PyQ_SupplementSpawn(edict_t *edict);
-
-// Called from PR_ExecuteProgram() in pr_exec.c before QuakeC function execution
-// prevents QuakeC function execution if returns true
-qboolean PyQ_OverrideProgram(func_t function_index);
-
-// Called from PR_ExecuteProgram() in pr_exec.c after QuakeC function execute
-void PyQ_SupplementProgram(func_t function_index);
-
-enum
-{
-    em_touch,
-    em_think,
-    em_blocked,
-};
-
-qboolean PyQ_OverrideEntityMethod(int em);
-void PyQ_SupplementEntityMethod(int em);
+void PyQ_OnEntitySpawn(edict_t *edict);
+void PyQ_PostEntitySpawn(edict_t *edict);
+void PyQ_OnEntityThink(edict_t *edict);
+void PyQ_PostEntityThink(edict_t *edict);
+void PyQ_OnEntityTouch(edict_t *edict, edict_t *other);
+void PyQ_PostEntityTouch(edict_t *edict, edict_t *other);
+void PyQ_OnEntityBlocked(edict_t *edict, edict_t *other);
+void PyQ_PostEntityBlocked(edict_t *edict, edict_t *other);
 
 //------------------------------------------------------------------------------
 

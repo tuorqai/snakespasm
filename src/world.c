@@ -355,9 +355,9 @@ void SV_TouchLinks (edict_t *ent)
 		if (touch == ent)
 			continue;
 
-		// [tuorqai] overwritten
+                PyQ_OnEntityTouch (touch, ent);
 
-		if (/*!touch->v.touch ||*/ touch->v.solid != SOLID_TRIGGER)
+		if (!touch->v.touch || touch->v.solid != SOLID_TRIGGER)
 			continue;
 		if (ent->v.absmin[0] > touch->v.absmax[0]
 		|| ent->v.absmin[1] > touch->v.absmax[1]
@@ -373,12 +373,8 @@ void SV_TouchLinks (edict_t *ent)
 		pr_global_struct->other = EDICT_TO_PROG(ent);
 		pr_global_struct->time = sv.time;
 
-		if (!PyQ_OverrideEntityMethod (em_touch)) {
-			if (touch->v.touch) {
-				PR_ExecuteProgram (touch->v.touch);
-				PyQ_SupplementEntityMethod (em_touch);
-			}
-		}
+                PR_ExecuteProgram (touch->v.touch);
+                PyQ_PostEntityTouch (touch, ent);
 
 		pr_global_struct->self = old_self;
 		pr_global_struct->other = old_other;
