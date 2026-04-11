@@ -76,6 +76,9 @@ void PyQ_PostEntityTouch(edict_t *edict, edict_t *other);
 void PyQ_OnEntityBlocked(edict_t *edict, edict_t *other);
 void PyQ_PostEntityBlocked(edict_t *edict, edict_t *other);
 
+
+PyObject *PyQ_quake_init(void);
+
 //------------------------------------------------------------------------------
 
 #endif // QUAKE_PQ_H

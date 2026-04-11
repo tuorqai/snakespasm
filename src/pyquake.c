@@ -30,9 +30,13 @@ int                 PyQ_string_storage_size;
 
 cvar_t              py_strict = { "py_strict", "1", CVAR_ARCHIVE };
 
+PyObject            *PyQ_hooks;
+
 static PyObject     *PyQ_globals;
 
 static char         PyQ_autocomplete_buffer[1024];
+
+static PyObject *PyQ_quake_module;
 
 //------------------------------------------------------------------------------
 // engineglue: basic glue module
@@ -208,104 +212,6 @@ PyObject *PyQ_engineglue_init(void)
 
 error:
     Py_XDECREF(dict);
-    Py_DECREF(module);
-
-    return NULL;
-}
-
-//------------------------------------------------------------------------------
-// quake: this module exposes the engine data to Python
-
-static PyObject *PyQ_quake_module;
-static PyObject *PyQ_quake_call_hook_f;
-
-static PyMethodDef PyQ_quake_methods[] = {
-    { NULL },
-};
-
-static PyModuleDef PyQ_quake_moddef = {
-    PyModuleDef_HEAD_INIT,
-    "quake",                        // m_name
-    NULL,                           // m_doc
-    -1,                             // m_size
-    PyQ_quake_methods,              // m_methods
-    NULL,                           // m_slots
-    NULL,                           // m_traverse
-    NULL,                           // m_clear
-    NULL,                           // m_free
-};
-
-#if 0
-static char const *PyQ_quake_pycode =
-    "hooks = {\n"
-    "    'serverspawn': [],\n"
-    "    'entityspawn': [],\n"
-    "    'entitytouch': [],\n"
-    "    'entitythink': [],\n"
-    "    'entityblocked': [],\n"
-    "    'startframe': [],\n"
-    "    'playerprethink': [],\n"
-    "    'playerpostthink': [],\n"
-    "    'clientkill': [],\n"
-    "    'clientconnect': [],\n"
-    "    'putclientinserver': [],\n"
-    "    'setnewparms': [],\n"
-    "    'setchangeparms': [],\n"
-    "}\n"
-    "\n"
-    "def call_hook(name, *args):\n"
-    "    for h in hooks[name]:\n"
-    "        try:\n"
-    "            h(*args)\n"
-    "        except Exception:\n"
-    "            print(f'The hook {h} failed to run and was removed.')\n"
-    "            hooks[name].remove(h)\n"
-    "\n";
-#endif
-
-static PyObject *PyQ_quake_init(void)
-{
-    PyObject *module;
-    PyObject *dict;
-    PyObject *pycode_result;
-    qboolean is_pycode_compiled;
-
-    module = PyModule_Create(&PyQ_quake_moddef);
-
-    if (!module) {
-        return NULL;
-    }
-
-#if 0
-    dict = PyModule_GetDict(module);
-
-    if (!dict) {
-        goto error;
-    }
-
-    pycode_result = PyRun_String(PyQ_quake_pycode, Py_file_input, dict, dict);
-    is_pycode_compiled = pycode_result ? true : false;
-
-    Py_XDECREF(pycode_result);
-
-    if (!is_pycode_compiled) {
-        goto error;
-    }
-
-    PyQ_hooks = PyObject_GetAttrString(module, "hooks");
-    PyQ_quake_call_hook_f = PyObject_GetAttrString(module, "call_hook");
-
-    if (!PyQ_hooks || !PyQ_quake_call_hook_f) {
-        goto error;
-    }
-#endif
-
-    PyObject_SetAttrString(module, "hooks", PyQ_hooks);
-
-    return module;
-
-error:
-    Py_XDECREF(PyQ_hooks);
     Py_DECREF(module);
 
     return NULL;

@@ -20,106 +20,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 
 //-------------------------------------------------------------------------------
-
-PyObject *PyQ_hooks;
-
-//-------------------------------------------------------------------------------
-
-/**
- * Utility function to emulate Python's print() behaviour.
- */
-static int PyQ_PrintToBuffer(char *buffer, Py_ssize_t bufsize, PyObject *args, PyObject *kwargs)
-{
-    int i, num, pos = 0;
-
-    char const *sepstr = " ", *endstr = "\n";
-    int seplen = 1, endlen = 1;
-
-    // Check if sep or end are set.
-    if (kwargs) {
-        PyObject *sep, *end;
-
-        sep = PyDict_GetItemString(kwargs, "sep");
-
-        if (sep) {
-            if (PyUnicode_Check(sep)) {
-                sepstr = PyUnicode_AsUTF8(sep);
-
-                if (!sepstr) {
-                    return -1;
-                }
-
-                seplen = strlen(sepstr);
-            } else {
-                PyErr_SetString(PyExc_TypeError, "sep must be a string");
-                return -1;
-            }
-        }
-
-        end = PyDict_GetItemString(kwargs, "end");
-
-        if (end) {
-            if (PyUnicode_Check(end)) {
-                endstr = PyUnicode_AsUTF8(end);
-
-                if (!endstr) {
-                    return -1;
-                }
-
-                endlen = strlen(endstr);
-            } else {
-                PyErr_SetString(PyExc_TypeError, "end must be a string");
-                return -1;
-            }
-        }
-    }
-
-    num = PyTuple_Size(args);
-
-    for (i = 0; i < num; i++) {
-        PyObject *item, *itemstr;
-        char const *str;
-        Py_ssize_t len;
-        int truncated = 0;
-
-        item = PyTuple_GetItem(args, i);
-        itemstr = PyObject_Str(item); // new reference
-
-        if (!itemstr) {
-            return -1;
-        }
-
-        str = PyUnicode_AsUTF8AndSize(itemstr, &len);
-
-        if (str) {
-            if ((pos + len + seplen + endlen + 1) > bufsize) {
-                // truncate
-                Q_strncpy(&buffer[pos], str, bufsize - pos - 1);
-                truncated = 1;
-            } else {
-                Q_strcpy(&buffer[pos], str);
-                pos += len;
-
-                if (i != num - 1) {
-                    Q_strcpy(&buffer[pos], sepstr);
-                    pos += seplen;
-                }
-            }
-        }
-
-        Py_DECREF(itemstr);
-
-        if (truncated) {
-            buffer[bufsize - 1] = '\0';
-            return 1;
-        }
-    }
-
-    Q_strcpy(&buffer[pos], endstr);
-    return 0;
-}
-
-//-------------------------------------------------------------------------------
 // quake.vec class
 
 /**
@@ -1268,7 +1168,7 @@ static PyObject *PyQ__sv_precache_model(PyObject *self, PyObject *args)
 }
 
 /**
- * quake._sv.bprint(*args, sep=' ', end='\n')
+ * quake._sv.bprint(str)
  */
 static PyObject *PyQ__sv_bprint(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -1279,28 +1179,29 @@ static PyObject *PyQ__sv_bprint(PyObject *self, PyObject *args, PyObject *kwargs
         return NULL;
     }
 
-    if (PyQ_PrintToBuffer(buffer, sizeof(buffer), args, kwargs) == -1) {
+    char *str;
+
+    if (!PyArg_ParseTuple(args, "s", &str)) {
         return NULL;
     }
 
-    SV_BroadcastPrintf("%s", buffer);
+    SV_BroadcastPrintf("%s", str);
     Py_RETURN_NONE;
 }
 
 /**
- * quake._sv.sprint(ent, *args, sep=' ', end='\n')
+ * quake._sv.sprint(ent, str)
  */
 static PyObject *PyQ__sv_sprint(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-    char buffer[1024];
-    Py_ssize_t i, argslen;
-    PyObject *newargs;
     PyQ__sv_edict *edict;
-    int status;
+    char *str;
 
-    edict = (PyQ__sv_edict *) PyTuple_GetItem(args, 0);
+    if (!PyArg_ParseTuple(args, "Os", &edict, &str)) {
+        return NULL;
+    }
 
-    if (!edict || !PyObject_TypeCheck((PyObject *) edict, &PyQ__sv_edict_type)) {
+    if (!PyObject_TypeCheck((PyObject *) edict, &PyQ__sv_edict_type)) {
         PyErr_SetString(PyExc_ValueError, "first parameter should be edict");
         return NULL;
     }
@@ -1315,28 +1216,8 @@ static PyObject *PyQ__sv_sprint(PyObject *self, PyObject *args, PyObject *kwargs
         return NULL;
     }
 
-    argslen = PyTuple_Size(args);
-    newargs = PyTuple_New(argslen - 1);
-
-    if (!newargs) {
-        return NULL;
-    }
-
-    for (i = 1; i < argslen; i++) {
-        PyObject *item = PyTuple_GetItem(args, i);
-        Py_INCREF(item);
-        PyTuple_SetItem(newargs, i - 1, item);
-    }
-
-    status = PyQ_PrintToBuffer(buffer, sizeof(buffer), newargs, kwargs);
-    Py_DECREF(newargs);
-
-    if (status == -1) {
-        return NULL;
-    }
-
     MSG_WriteChar(&svs.clients[edict->index - 1].message, svc_print);
-    MSG_WriteString(&svs.clients[edict->index - 1].message, buffer);
+    MSG_WriteString(&svs.clients[edict->index - 1].message, str);
 
     Py_RETURN_NONE;
 }
@@ -1377,19 +1258,18 @@ static PyObject *PyQ__sv_particle(PyObject *self, PyObject *args, PyObject *kwar
 }
 
 /**
- * quake._sv.centerprint(ent, *args, sep=' ', end='\n')
+ * quake._sv.centerprint(ent, str)
  */
 static PyObject *PyQ__sv_centerprint(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-    char buffer[1024];
-    Py_ssize_t i, argslen;
-    PyObject *newargs;
     PyQ__sv_edict *edict;
-    int status;
+    char *str;
 
-    edict = (PyQ__sv_edict *) PyTuple_GetItem(args, 0);
+    if (!PyArg_ParseTuple(args, "Os", &edict, &str)) {
+        return NULL;
+    }
 
-    if (!edict || !PyObject_TypeCheck((PyObject *) edict, &PyQ__sv_edict_type)) {
+    if (!PyObject_TypeCheck((PyObject *) edict, &PyQ__sv_edict_type)) {
         PyErr_SetString(PyExc_ValueError, "first parameter should be edict");
         return NULL;
     }
@@ -1404,28 +1284,8 @@ static PyObject *PyQ__sv_centerprint(PyObject *self, PyObject *args, PyObject *k
         return NULL;
     }
 
-    argslen = PyTuple_Size(args);
-    newargs = PyTuple_New(argslen - 1);
-
-    if (!newargs) {
-        return NULL;
-    }
-
-    for (i = 1; i < argslen; i++) {
-        PyObject *item = PyTuple_GetItem(args, i);
-        Py_INCREF(item);
-        PyTuple_SetItem(newargs, i - 1, item);
-    }
-
-    status = PyQ_PrintToBuffer(buffer, sizeof(buffer), newargs, kwargs);
-    Py_DECREF(newargs);
-
-    if (status == -1) {
-        return NULL;
-    }
-
     MSG_WriteChar(&svs.clients[edict->index - 1].message, svc_centerprint);
-    MSG_WriteString(&svs.clients[edict->index - 1].message, buffer);
+    MSG_WriteString(&svs.clients[edict->index - 1].message, str);
 
     Py_RETURN_NONE;
 }
@@ -1579,103 +1439,6 @@ static PyTypeObject PyQ__sv_type = {
     PyQ__sv_methods,                            // tp_methods
     NULL,                                       // tp_members
     PyQ__sv_getset,                             // tp_getset
-    NULL,                                       // tp_base
-    NULL,                                       // tp_dict
-    NULL,                                       // tp_descr_get
-    NULL,                                       // tp_descr_set
-    0,                                          // tp_dictoffset
-    NULL,                                       // tp_init
-    NULL,                                       // tp_alloc
-    NULL,                                       // tp_new
-    NULL,                                       // tp_free
-    NULL,                                       // tp_is_gc
-    NULL,                                       // tp_bases
-    NULL,                                       // tp_mro
-    NULL,                                       // tp_cache
-    NULL,                                       // tp_subclasses
-    NULL,                                       // tp_weaklist
-    NULL,                                       // tp_del
-    0,                                          // tp_version_tag
-    NULL,                                       // tp_finalize
-    NULL,                                       // tp_vectorcall
-};
-
-//-------------------------------------------------------------------------------
-// quake._cl class
-
-typedef struct {
-    PyObject_HEAD
-} PyQ__cl;
-
-/**
- * quake._cl.__dealloc__
- */
-static void PyQ__cl_dealloc(PyObject *self)
-{
-    Py_TYPE(self)->tp_free(self);
-}
-
-/**
- * quake._cl.print
- */
-static PyObject *PyQ__cl_print(PyObject *self, PyObject *args, PyObject *kwargs)
-{
-    char buffer[4096]; // Con_Printf() has a 4k buffer
-    int status;
-
-    status = PyQ_PrintToBuffer(buffer, sizeof(buffer), args, kwargs);
-
-    if (status == -1) {
-        // Something went horribly wrong
-        return NULL;
-    }
-
-    Con_Printf("%s", buffer);
-
-    if (status == 1) {
-        // Output got truncated, warn user
-        Con_Printf("%c\nconsole output from the last Python command got truncated.\n", 2);
-    }
-
-    Py_RETURN_NONE;
-}
-
-static PyMethodDef PyQ__cl_methods[] = {
-    { "print",              (PyCFunction) PyQ__cl_print,            METH_VARARGS | METH_KEYWORDS },
-    { NULL },
-};
-
-static PyTypeObject PyQ__cl_type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "quake._cl",                                // tp_name
-    sizeof(PyQ__cl),                            // tp_basicsize
-    0,                                          // tp_itemsize
-    PyQ__cl_dealloc,                            // tp_dealloc
-    0,                                          // tp_vectorcall_offset
-    NULL,                                       // tp_getattr
-    NULL,                                       // tp_setattr
-    NULL,                                       // tp_as_async
-    NULL,                                       // tp_repr
-    NULL,                                       // tp_as_number
-    NULL,                                       // tp_as_sequence
-    NULL,                                       // tp_as_mapping
-    NULL,                                       // tp_hash
-    NULL,                                       // tp_call
-    NULL,                                       // tp_str
-    NULL,                                       // tp_getattro
-    NULL,                                       // tp_setattro
-    NULL,                                       // tp_as_buffer
-    Py_TPFLAGS_DEFAULT,                         // tp_flags
-    NULL,                                       // tp_doc
-    NULL,                                       // tp_traverse
-    NULL,                                       // tp_clear
-    NULL,                                       // tp_richcompare
-    0,                                          // tp_weaklistoffset
-    NULL,                                       // tp_iter
-    NULL,                                       // tp_iternext
-    PyQ__cl_methods,                            // tp_methods
-    NULL,                                       // tp_members
-    NULL,                                       // tp_getset
     NULL,                                       // tp_base
     NULL,                                       // tp_dict
     NULL,                                       // tp_descr_get
@@ -1890,17 +1653,17 @@ static PyObject *PyQ_vectoangles(PyObject *self, PyObject *args)
 }
 
 /**
- * dprint(*args, sep=' ', end='\n')
+ * dprint(str)
  */
 static PyObject *PyQ_dprint(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-    char buffer[1024];
+    char *str;
 
-    if (PyQ_PrintToBuffer(buffer, sizeof(buffer), args, kwargs) == -1) {
+    if (!PyArg_ParseTuple(args, "s", &str)) {
         return NULL;
     }
 
-    Con_DPrintf("%s", buffer);
+    Con_DPrintf("%s", str);
 
     Py_RETURN_NONE;
 }
@@ -1966,12 +1729,11 @@ struct PyQ_namevalue
     int value;
 };
 
-PyObject *PyQ_quake_init2(void)
+PyObject *PyQ_quake_init(void)
 {
     PyObject *module;
 
     PyQ__sv *sv = NULL;
-    PyQ__cl *cl = NULL;
 
     if (PyType_Ready(&PyQ_vec_type) == -1) {
         return NULL;
@@ -1985,10 +1747,6 @@ PyObject *PyQ_quake_init2(void)
         return NULL;
     }
 
-    if (PyType_Ready(&PyQ__cl_type) == -1) {
-        return NULL;
-    }
-
     module = PyModule_Create(&quake_module);
 
     if (!module) {
@@ -1998,7 +1756,6 @@ PyObject *PyQ_quake_init2(void)
     Py_INCREF(&PyQ_vec_type);
     Py_INCREF(&PyQ__sv_edict_type);
     Py_INCREF(&PyQ__sv_type);
-    Py_INCREF(&PyQ__cl_type);
 
     struct PyQ_namevalue constant_list[] = {
         { "IT_AXE", IT_AXE },
@@ -2081,15 +1838,7 @@ PyObject *PyQ_quake_init2(void)
         goto error;
     }
 
-    cl = PyObject_New(PyQ__cl, &PyQ__cl_type);
-
-    if (!cl || PyModule_AddObject(module, "cl", (PyObject *) cl) == -1) {
-        goto error;
-    }
-
-    PyQ_hooks = PyDict_New();
-
-    if (!PyQ_hooks || PyModule_AddObject(module, "hooks", PyQ_hooks) == -1) {
+    if (PyModule_AddObject(module, "hooks", PyQ_hooks) == -1) {
         goto error;
     }
 
@@ -2097,7 +1846,6 @@ PyObject *PyQ_quake_init2(void)
 
 error:
     Py_XDECREF(sv);
-    Py_DECREF(&PyQ__cl_type);
     Py_DECREF(&PyQ__sv_type);
     Py_DECREF(&PyQ__sv_edict_type);
     Py_DECREF(&PyQ_vec_type);
