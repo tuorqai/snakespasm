@@ -173,6 +173,161 @@ static int PyQ_vec_setz(PyQ_vec *self, PyObject *value, void *closure)
 }
 
 /**
+ * quake.vec.makevectors() -> (vec, vec, vec)
+ */
+static PyObject *PyQ_vec_makevectors(PyQ_vec *self, PyObject *args, void *closure)
+{
+    PyQ_vec *forward = NULL;
+    PyQ_vec *right = NULL;
+    PyQ_vec *up = NULL;
+
+    PyObject *result = NULL;
+
+    if (!(forward = PyObject_New(PyQ_vec, &PyQ_vec_type))) {
+        goto end;
+    }
+
+    if (!(right = PyObject_New(PyQ_vec, &PyQ_vec_type))) {
+        goto end;
+    }
+
+    if (!(up = PyObject_New(PyQ_vec, &PyQ_vec_type))) {
+        goto end;
+    }
+
+    forward->p = &forward->v;
+    right->p = &right->v;
+    up->p = &up->v;
+
+    AngleVectors(*self->p, *forward->p, *right->p, *up->p);
+
+    result = PyTuple_Pack(3, forward, right, up);
+
+end:
+    Py_XDECREF(forward);
+    Py_XDECREF(right);
+    Py_XDECREF(up);
+
+    return result;
+}
+
+/**
+ * quake.vec.normalize() -> vec
+ */
+static PyObject *PyQ_vec_normalize(PyQ_vec *self, PyObject *args, void *closure)
+{
+    PyQ_vec *result;
+
+    float x = (*self->p)[0];
+    float y = (*self->p)[1];
+    float z = (*self->p)[2];
+
+    double len = sqrt(x * x + y * y + z * z);
+
+    if (!(result = PyObject_New(PyQ_vec, &PyQ_vec_type))) {
+        return NULL;
+    }
+
+    result->p = &result->v;
+
+    if (len == 0.0) {
+        result->v[0] = 0.f;
+        result->v[1] = 0.f;
+        result->v[2] = 0.f;
+    } else {
+        result->v[0] = x / len;
+        result->v[1] = y / len;
+        result->v[2] = z / len;
+    }
+
+    return (PyObject *) result;
+}
+
+/**
+ * quake.vec.vlen() -> vec
+ */
+static PyObject *PyQ_vec_vlen(PyQ_vec *self, PyObject *args, void *closure)
+{
+    float x = (*self->p)[0];
+    float y = (*self->p)[1];
+    float z = (*self->p)[2];
+
+    double len = sqrt(x * x + y * y + z * z);
+
+    return PyFloat_FromDouble(len);
+}
+
+/**
+ * quake.vec.vectoyaw() -> float
+ */
+static PyObject *PyQ_vec_vectoyaw(PyQ_vec *self, PyObject *args, void *closure)
+{
+    float x = (*self->p)[0];
+    float y = (*self->p)[1];
+
+    if (y == 0.f && x == 0.f) {
+        return PyFloat_FromDouble(0.0);
+    }
+
+    double yaw = floor(atan2(y, x) * 180 / M_PI);
+
+    if (yaw < 0.0) {
+        yaw += 360.0;
+    }
+
+    return PyFloat_FromDouble(yaw);
+}
+
+/**
+ * quake.vec.vectoangles() -> vec
+ */
+static PyObject *PyQ_vec_vectoangles(PyQ_vec *self, PyObject *args, void *closure)
+{
+    PyQ_vec *result;
+
+    if (!(result = PyObject_New(PyQ_vec, &PyQ_vec_type))) {
+        return NULL;
+    }
+
+    float x = (*self->p)[0];
+    float y = (*self->p)[1];
+    float z = (*self->p)[2];
+
+    float yaw, pitch, forward;
+
+    if (y == 0.f && x == 0.f) {
+        yaw = 0.f;
+
+        if (z > 0.f) {
+            pitch = 90.f;
+        } else {
+            pitch = 270.f;
+        }
+    } else {
+        yaw = floorf(atan2f(y, x) * 180.f / M_PI);
+
+        if (yaw < 0.f) {
+            yaw += 360.f;
+        }
+
+        forward = sqrtf(x * x + y * y);
+        pitch = floorf(atan2f(z, forward) * 180.f / M_PI);
+
+        if (pitch < 0.f) {
+            pitch += 360.f;
+        }
+    }
+
+    result->p = &result->v;
+
+    result->v[0] = pitch;
+    result->v[1] = yaw;
+    result->v[2] = 0.f;
+
+    return (PyObject *) result;
+}
+
+/**
  * quake.vec.__add__
  */
 static PyObject *PyQ_vec_add(PyQ_vec *a, PyQ_vec *b)
@@ -270,6 +425,15 @@ static PyObject *PyQ_vec_neg(PyQ_vec *a)
     return result;
 }
 
+static PyMethodDef PyQ_vec_methods[] = {
+    { "makevectors",    (PyCFunction) PyQ_vec_makevectors,  METH_VARARGS },
+    { "normalize",      (PyCFunction) PyQ_vec_normalize,    METH_VARARGS },
+    { "vlen",           (PyCFunction) PyQ_vec_vlen,         METH_VARARGS },
+    { "vectoyaw",       (PyCFunction) PyQ_vec_vectoyaw,     METH_VARARGS },
+    { "vectoangles",    (PyCFunction) PyQ_vec_vectoangles,  METH_VARARGS },
+    { NULL },
+};
+
 static PyGetSetDef PyQ_vec_getset[] = {
     { "x", (getter) PyQ_vec_getx, (setter) PyQ_vec_setx },
     { "y", (getter) PyQ_vec_gety, (setter) PyQ_vec_sety },
@@ -344,7 +508,7 @@ PyTypeObject PyQ_vec_type = {
     0,                                          // tp_weaklistoffset
     NULL,                                       // tp_iter
     NULL,                                       // tp_iternext
-    NULL,                                       // tp_methods
+    PyQ_vec_methods,                            // tp_methods
     NULL,                                       // tp_members
     PyQ_vec_getset,                             // tp_getset
     NULL,                                       // tp_base
@@ -369,7 +533,7 @@ PyTypeObject PyQ_vec_type = {
 };
 
 //-------------------------------------------------------------------------------
-// quake._sv.edict class
+// quake.entity class
 
 /**
  * PyQ__sv_edict -> edict_t
@@ -453,8 +617,8 @@ static PyObject *PyQ__sv_edict_repr(PyQ__sv_edict *self)
         return PyUnicode_FromFormat("<invalid entity reference at %p>", self);
     }
 
-    return PyUnicode_FromFormat("<edict #%d, classname \"%s\">",
-                                self->index, PR_GetString(edict->v.classname));
+    return PyUnicode_FromFormat("<entity #%d, classname \"%s\">",
+        self->index, PR_GetString(edict->v.classname));
 }
 
 /**
@@ -879,7 +1043,7 @@ static PyGetSetDef PyQ__sv_edict_getset[] = {
 
 PyTypeObject PyQ__sv_edict_type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "quake._sv.edict",                          // tp_name
+    "quake.entity",                             // tp_name
     sizeof(PyQ__sv_edict),                      // tp_basicsize
     0,                                          // tp_itemsize
     (destructor) PyQ__sv_edict_dealloc,         // tp_dealloc
@@ -945,7 +1109,7 @@ static void PyQ__sv_dealloc(PyObject *self)
 }
 
 /**
- * quake._sv.setorigin
+ * quake.setorigin
  */
 static PyObject *PyQ__sv_setorigin(PyObject *self, PyObject *args)
 {
@@ -970,7 +1134,7 @@ static PyObject *PyQ__sv_setorigin(PyObject *self, PyObject *args)
 }
 
 /**
- * quake._sv.setmodel
+ * quake.setmodel
  */
 static PyObject *PyQ__sv_setmodel(PyObject *self, PyObject *args)
 {
@@ -1010,7 +1174,7 @@ static PyObject *PyQ__sv_setmodel(PyObject *self, PyObject *args)
 }
 
 /**
- * quake._sv.setsize
+ * quake.setsize
  */
 static PyObject *PyQ__sv_setsize(PyObject *self, PyObject *args)
 {
@@ -1038,7 +1202,7 @@ static PyObject *PyQ__sv_setsize(PyObject *self, PyObject *args)
 }
 
 /**
- * quake._sv.sound(edict, sample, chan=0, vol=1.0, attn=0)
+ * quake.sound(edict, sample, chan=0, vol=1.0, attn=0)
  */
 static PyObject *PyQ__sv_sound(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -1072,7 +1236,7 @@ static PyObject *PyQ__sv_sound(PyObject *self, PyObject *args, PyObject *kwargs)
 }
 
 /**
- * quake._sv.spawn()
+ * quake.spawn()
  */
 static PyObject *PyQ__sv_spawn(PyObject *self, PyObject *args)
 {
@@ -1091,7 +1255,7 @@ static PyObject *PyQ__sv_spawn(PyObject *self, PyObject *args)
 }
 
 /**
- * quake.__sv.remove(ent)
+ * quake.remove(ent)
  */
 static PyObject *PyQ__sv_remove(PyObject *self, PyObject *args)
 {
@@ -1113,7 +1277,7 @@ static PyObject *PyQ__sv_remove(PyObject *self, PyObject *args)
 }
 
 /**
- * quake._sv.precache_sound(name)
+ * quake.precache_sound(name)
  */
 static PyObject *PyQ__sv_precache_sound(PyObject *self, PyObject *args)
 {
@@ -1140,7 +1304,7 @@ static PyObject *PyQ__sv_precache_sound(PyObject *self, PyObject *args)
 }
 
 /**
- * quake._sv.precache_sound(name)
+ * quake.precache_model(name)
  */
 static PyObject *PyQ__sv_precache_model(PyObject *self, PyObject *args)
 {
@@ -1168,7 +1332,7 @@ static PyObject *PyQ__sv_precache_model(PyObject *self, PyObject *args)
 }
 
 /**
- * quake._sv.bprint(str)
+ * quake.bprint(str)
  */
 static PyObject *PyQ__sv_bprint(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -1190,7 +1354,7 @@ static PyObject *PyQ__sv_bprint(PyObject *self, PyObject *args, PyObject *kwargs
 }
 
 /**
- * quake._sv.sprint(ent, str)
+ * quake.sprint(ent, str)
  */
 static PyObject *PyQ__sv_sprint(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -1223,7 +1387,7 @@ static PyObject *PyQ__sv_sprint(PyObject *self, PyObject *args, PyObject *kwargs
 }
 
 /**
- * quake._sv.particle(org, dir=(0.0, 0.0, 0.0), color=0, count=1)
+ * quake.particle(org, dir=vec(0.0, 0.0, 0.0), color=0, count=1)
  */
 static PyObject *PyQ__sv_particle(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -1258,7 +1422,7 @@ static PyObject *PyQ__sv_particle(PyObject *self, PyObject *args, PyObject *kwar
 }
 
 /**
- * quake._sv.centerprint(ent, str)
+ * quake.centerprint(ent, str)
  */
 static PyObject *PyQ__sv_centerprint(PyObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -1291,16 +1455,6 @@ static PyObject *PyQ__sv_centerprint(PyObject *self, PyObject *args, PyObject *k
 }
 
 /**
- * quake._sv.edict getter
- */
-static PyObject *PyQ__sv_getedict(PyObject *self, void *closure)
-{
-    // I'm not really sure if this is a correct way to put
-    // a class inside another class.
-    return (PyObject *) &PyQ__sv_edict_type;
-}
-
-/**
  * quake._sv.edicts getter
  */
 static PyObject *PyQ__sv_getedicts(PyObject *self, void *closure)
@@ -1320,6 +1474,58 @@ static PyObject *PyQ__sv_getedicts(PyObject *self, void *closure)
     }
 
     for (i = 0; i < sv.num_edicts; i++) {
+        PyQ__sv_edict *edict;
+
+        // ignore free ents
+        if (EDICT_NUM(i)->free) {
+            continue;
+        }
+
+        edict = PyObject_New(PyQ__sv_edict, &PyQ__sv_edict_type);
+
+        if (!edict) {
+            goto error;
+        }
+
+        if (i >= 1 && i <= svs.maxclients) {
+            edict->servernumber = -1;
+        } else {
+            edict->servernumber = PyQ_servernumber;
+        }
+
+        edict->index = i;
+
+        PyList_Append(list, (PyObject *) edict);
+        Py_DECREF(edict);
+    }
+
+    return list;
+
+error:
+    Py_DECREF(list);
+    return NULL;
+}
+
+/**
+ * quake._sv.clients getter
+ */
+static PyObject *PyQ__sv_getclients(PyObject *self, void *closure)
+{
+    int i;
+    PyObject *list;
+
+    if (!sv.active && !PyQ_serverloading) {
+        PyErr_SetString(PyExc_RuntimeError, "server is not running");
+        return NULL;
+    }
+
+    list = PyList_New(0);
+
+    if (!list) {
+        return NULL;
+    }
+
+    for (i = 1; i <= svs.maxclients; i++) {
         PyQ__sv_edict *edict;
 
         // ignore free ents
@@ -1385,25 +1591,13 @@ static PyObject *PyQ__sv_gettime(PyObject *self, void *closure)
 }
 
 static PyMethodDef PyQ__sv_methods[] = {
-    { "setorigin",          PyQ__sv_setorigin,                      METH_VARARGS },
-    { "setmodel",           PyQ__sv_setmodel,                       METH_VARARGS },
-    { "setsize",            PyQ__sv_setsize,                        METH_VARARGS },
-    { "sound",              (PyCFunction) PyQ__sv_sound,            METH_VARARGS | METH_KEYWORDS },
-    { "spawn",              PyQ__sv_spawn,                          METH_VARARGS },
-    { "remove",             PyQ__sv_remove,                         METH_VARARGS },
-    { "precache_sound",     PyQ__sv_precache_sound,                 METH_VARARGS },
-    { "precache_model",     PyQ__sv_precache_model,                 METH_VARARGS },
-    { "bprint",             (PyCFunction) PyQ__sv_bprint,           METH_VARARGS | METH_KEYWORDS },
-    { "sprint",             (PyCFunction) PyQ__sv_sprint,           METH_VARARGS | METH_KEYWORDS },
-    { "particle",           (PyCFunction) PyQ__sv_particle,         METH_VARARGS | METH_KEYWORDS },
-    { "centerprint",        (PyCFunction) PyQ__sv_centerprint,      METH_VARARGS | METH_KEYWORDS },
     { NULL },
 };
 
 static PyGetSetDef PyQ__sv_getset[] = {
-    { "edict",              PyQ__sv_getedict },
-    { "edicts",             PyQ__sv_getedicts },
+    { "entities",           PyQ__sv_getedicts },
     { "world",              PyQ__sv_getworld },
+    { "clients",            PyQ__sv_getclients },
     { "time",               PyQ__sv_gettime },
     { NULL },
 };
@@ -1464,195 +1658,6 @@ static PyTypeObject PyQ__sv_type = {
 // quake module
 
 /**
- * makevectors(v: vec) -> (vec, vec, vec)
- */
-static PyObject *PyQ_makevectors(PyObject *self, PyObject *args)
-{
-    PyQ_vec *vec;
-
-    PyQ_vec *forward = NULL;
-    PyQ_vec *right = NULL;
-    PyQ_vec *up = NULL;
-
-    PyObject *result = NULL;
-
-    if (!PyArg_ParseTuple(args, "O!", &PyQ_vec_type, &vec)) {
-        return NULL;
-    }
-
-    if (!(forward = PyObject_New(PyQ_vec, &PyQ_vec_type))) {
-        goto end;
-    }
-
-    if (!(right = PyObject_New(PyQ_vec, &PyQ_vec_type))) {
-        goto end;
-    }
-
-    if (!(up = PyObject_New(PyQ_vec, &PyQ_vec_type))) {
-        goto end;
-    }
-
-    forward->p = &forward->v;
-    right->p = &right->v;
-    up->p = &up->v;
-
-    AngleVectors(*vec->p, *forward->p, *right->p, *up->p);
-
-    result = PyTuple_Pack(3, forward, right, up);
-
-end:
-    Py_XDECREF(forward);
-    Py_XDECREF(right);
-    Py_XDECREF(up);
-
-    return result;
-}
-
-/**
- * normalize(v: vec) -> vec
- */
-static PyObject *PyQ_normalize(PyObject *self, PyObject *args)
-{
-    PyQ_vec *vec, *result;
-
-    float x, y, z;
-    double len;
-
-    if (!PyArg_ParseTuple(args, "O!", &PyQ_vec_type, &vec)) {
-        return NULL;
-    }
-
-    if (!(result = PyObject_New(PyQ_vec, &PyQ_vec_type))) {
-        return NULL;
-    }
-
-    x = (*vec->p)[0];
-    y = (*vec->p)[1];
-    z = (*vec->p)[2];
-
-    len = sqrt(x * x + y * y + z * z);
-
-    result->p = &result->v;
-
-    if (len == 0.0) {
-        result->v[0] = 0.f;
-        result->v[1] = 0.f;
-        result->v[2] = 0.f;
-    } else {
-        result->v[0] = x / len;
-        result->v[1] = y / len;
-        result->v[2] = z / len;
-    }
-
-    return (PyObject *) result;
-}
-
-/**
- * vlen(v: vec) -> float
- */
-static PyObject *PyQ_vlen(PyObject *self, PyObject *args)
-{
-    PyQ_vec *vec;
-
-    float x, y, z;
-    double len;
-
-    if (!PyArg_ParseTuple(args, "O!", &PyQ_vec_type, &vec)) {
-        return NULL;
-    }
-
-    x = (*vec->p)[0];
-    y = (*vec->p)[1];
-    z = (*vec->p)[2];
-
-    len = sqrt(x * x + y * y + z * z);
-
-    return PyFloat_FromDouble(len);
-}
-
-/**
- * vectoyaw(v: vec) -> float
- */
-static PyObject *PyQ_vectoyaw(PyObject *self, PyObject *args)
-{
-    PyQ_vec *vec;
-    float x, y;
-    double yaw;
-
-    if (!PyArg_ParseTuple(args, "O!", &PyQ_vec_type, &vec)) {
-        return NULL;
-    }
-
-    x = (*vec->p)[0];
-    y = (*vec->p)[1];
-
-    if (y == 0.f && x == 0.f) {
-        return PyFloat_FromDouble(0.0);
-    }
-
-    yaw = floor(atan2(y, x) * 180 / M_PI);
-
-    if (yaw < 0.0) {
-        yaw += 360.0;
-    }
-
-    return PyFloat_FromDouble(yaw);
-}
-
-/**
- * vectoangles(v: vec) -> vec
- */
-static PyObject *PyQ_vectoangles(PyObject *self, PyObject *args)
-{
-    PyQ_vec *vec, *result;
-    float x, y, z;
-    float yaw, pitch, forward;
-
-    if (!PyArg_ParseTuple(args, "O!", &PyQ_vec_type, &vec)) {
-        return NULL;
-    }
-
-    if (!(result = PyObject_New(PyQ_vec, &PyQ_vec_type))) {
-        return NULL;
-    }
-
-    x = (*vec->p)[0];
-    y = (*vec->p)[1];
-    z = (*vec->p)[2];
-
-    if (y == 0.f && x == 0.f) {
-        yaw = 0.f;
-
-        if (z > 0.f) {
-            pitch = 90.f;
-        } else {
-            pitch = 270.f;
-        }
-    } else {
-        yaw = floorf(atan2f(y, x) * 180.f / M_PI);
-
-        if (yaw < 0.f) {
-            yaw += 360.f;
-        }
-
-        forward = sqrtf(x * x + y * y);
-        pitch = floorf(atan2f(z, forward) * 180.f / M_PI);
-
-        if (pitch < 0.f) {
-            pitch += 360.f;
-        }
-    }
-
-    result->p = &result->v;
-
-    result->v[0] = pitch;
-    result->v[1] = yaw;
-    result->v[2] = 0.f;
-
-    return (PyObject *) result;
-}
-
-/**
  * dprint(str)
  */
 static PyObject *PyQ_dprint(PyObject *self, PyObject *args, PyObject *kwargs)
@@ -1700,14 +1705,21 @@ static PyObject *PyQ_localcmd(PyObject *self, PyObject *args)
 }
 
 static PyMethodDef quake_methods[] = {
-    { "makevectors",    PyQ_makevectors,                METH_VARARGS },
-    { "normalize",      PyQ_normalize,                  METH_VARARGS },
-    { "vlen",           PyQ_vlen,                       METH_VARARGS },
-    { "vectoyaw",       PyQ_vectoyaw,                   METH_VARARGS },
-    { "vectoangles",    PyQ_vectoangles,                METH_VARARGS },
-    { "dprint",         (PyCFunction) PyQ_dprint,       METH_VARARGS | METH_KEYWORDS },
-    { "cvar",           PyQ_cvar,                       METH_VARARGS },
-    { "localcmd",       PyQ_localcmd,                   METH_VARARGS },
+    { "dprint",             (PyCFunction) PyQ_dprint,               METH_VARARGS | METH_KEYWORDS },
+    { "cvar",               PyQ_cvar,                               METH_VARARGS },
+    { "localcmd",           PyQ_localcmd,                           METH_VARARGS },
+    { "setorigin",          PyQ__sv_setorigin,                      METH_VARARGS },
+    { "setmodel",           PyQ__sv_setmodel,                       METH_VARARGS },
+    { "setsize",            PyQ__sv_setsize,                        METH_VARARGS },
+    { "sound",              (PyCFunction) PyQ__sv_sound,            METH_VARARGS | METH_KEYWORDS },
+    { "spawn",              PyQ__sv_spawn,                          METH_VARARGS },
+    { "remove",             PyQ__sv_remove,                         METH_VARARGS },
+    { "precache_sound",     PyQ__sv_precache_sound,                 METH_VARARGS },
+    { "precache_model",     PyQ__sv_precache_model,                 METH_VARARGS },
+    { "bprint",             (PyCFunction) PyQ__sv_bprint,           METH_VARARGS | METH_KEYWORDS },
+    { "sprint",             (PyCFunction) PyQ__sv_sprint,           METH_VARARGS | METH_KEYWORDS },
+    { "particle",           (PyCFunction) PyQ__sv_particle,         METH_VARARGS | METH_KEYWORDS },
+    { "centerprint",        (PyCFunction) PyQ__sv_centerprint,      METH_VARARGS | METH_KEYWORDS },
     { NULL },
 };
 
@@ -1829,6 +1841,10 @@ PyObject *PyQ_quake_init(void)
     }
 
     if (PyModule_AddObject(module, "vec", (PyObject *) &PyQ_vec_type) == -1) {
+        goto error;
+    }
+
+    if (PyModule_AddObject(module, "entity", (PyObject *) &PyQ__sv_edict_type) == -1) {
         goto error;
     }
 
